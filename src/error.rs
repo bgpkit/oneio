@@ -6,6 +6,7 @@ pub enum OneIoErrorKind {
     RemoteIoError(reqwest::Error),
     EofError(std::io::Error),
     IoError(std::io::Error),
+    NotSupported(String),
 }
 
 #[derive(Debug)]
@@ -19,6 +20,7 @@ impl Display for OneIoError {
             OneIoErrorKind::RemoteIoError(e) => {e.to_string()}
             OneIoErrorKind::EofError(e) => {e.to_string()}
             OneIoErrorKind::IoError(e) => {e.to_string()}
+            OneIoErrorKind::NotSupported(msg) => {msg.clone()}
         };
         write!(f, "error: {}", msg)
     }

@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -20,16 +20,17 @@ config = {version = "0.13.1", features = ["toml"]}
 dirs = "4"
 
 # remote
-reqwest = {version="0.11", features = ["blocking"]}
+reqwest = {version="0.11", features = ["blocking"], optional=true}
 
-# compression
+# oneio
 flate2 = {version = "1", optional=true }
 bzip2 = {version = "0.4", optional = true }
 lz4 = {version = "1.23", optional = true }
 
 [features]
 default = ["all"]
-all = ["gz", "bz", "lz"]
+all = ["remote", "gz", "bz", "lz"]
+remote=["reqwest"]
 gz = ["flate2"]
 bz = ["bzip2"]
 lz = ["lz4"]
