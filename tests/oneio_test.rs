@@ -20,9 +20,17 @@ fn test_read( file_path: &str ) {
 
 
 #[test]
-fn test_reader() {
+fn test_reader_local() {
     test_read("tests/test_data.txt");
     test_read("tests/test_data.txt.gz");
     test_read("tests/test_data.txt.bz2");
     test_read("tests/test_data.txt.lz4");
+}
+
+#[test]
+fn test_reader_remote() {
+    test_read("https://spaces.bgpkit.org/oneio/test_data.txt");
+    test_read("https://spaces.bgpkit.org/oneio/test_data.txt.gz");
+    test_read("https://spaces.bgpkit.org/oneio/test_data.txt.bz2");
+    test_read("https://spaces.bgpkit.org/oneio/test_data.txt.lz4");
 }
