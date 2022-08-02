@@ -14,11 +14,6 @@ reading and writing to and from data files from different sources and compressio
 keywords = ["io", "bgpkit"]
 
 [dependencies]
-tracing = "0.1"
-anyhow = "1.0"
-config = {version = "0.13.1", features = ["toml"]}
-dirs = "4"
-
 # remote
 reqwest = {version="0.11", features = ["blocking"], optional=true}
 

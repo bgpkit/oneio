@@ -7,7 +7,6 @@ mod bzip2;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
-use tracing::info;
 use crate::OneIoError;
 
 pub trait OneIOCompression {
@@ -44,7 +43,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
             lz4::OneIOLz4::get_reader(raw_reader)
         }
         _ => {
-            info!("unknown file type of file {}. try to read as uncompressed file", path);
+            // unknown file type of file {}. try to read as uncompressed file
             let reader = Box::new(raw_reader);
             Ok(Box::new(BufReader::new(reader)))
         }
@@ -69,7 +68,6 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
             lz4::OneIOLz4::get_writer(output_file)
         }
         _ => {
-            info!("unknown file type of file {}. try to read as uncompressed file", path);
             Ok(Box::new(BufWriter::new(output_file)))
         }
     }
