@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -16,7 +16,7 @@ keywords = ["io", "util"]
 [[bin]]
 name="oneio"
 path="src/bin/oneio.rs"
-required-features=["bin", "all"]
+required-features=["bin"]
 
 [dependencies]
 # remote
@@ -30,7 +30,9 @@ clap = {version="3.2", features=["derive"], optional=true}
 
 [features]
 default = ["all"]
-all = ["remote", "gz", "bz", "lz"]
+all = ["remote", "gz", "bz", "lz", "bin"]
+lib_only = ["remote", "gz", "bz", "lz"]
+
 remote=["reqwest"]
 gz = ["flate2"]
 bz = ["bzip2"]
