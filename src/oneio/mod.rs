@@ -77,7 +77,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
 pub fn get_cache_reader(
     path: &str,
     cache_dir: &str,
-    cache_file_name: Option<&str>,
+    cache_file_name: Option<String>,
     force_cache: bool
 ) -> Result<Box<dyn BufRead>, OneIoError> {
     let dir_path = std::path::Path::new(cache_dir);
@@ -95,7 +95,7 @@ pub fn get_cache_reader(
             let file_name = path.split('/').collect::<Vec<&str>>().into_iter().last().unwrap().to_string();
             format!("{}/{}", cache_dir, file_name)
         }
-        Some(p) => {p.to_string()}
+        Some(p) => {p}
     };
 
     // if cache file already exists

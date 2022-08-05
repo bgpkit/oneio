@@ -11,6 +11,18 @@ struct Cli {
     #[clap(name = "FILE", parse(from_os_str))]
     file: PathBuf,
 
+    /// cache reading to specified directory
+    #[clap(short, long)]
+    cache_dir: Option<String>,
+
+    /// force re-caching if local cache already exists
+    #[clap(short, long)]
+    cache_force: bool,
+
+    /// specify cache file name
+    #[clap(short, long)]
+    cache_file: Option<String>,
+
     /// read through file and only print out stats
     #[clap(short, long)]
     stats: bool,
@@ -19,13 +31,29 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
     let path: &str = cli.file.to_str().unwrap();
-    let reader = match oneio::get_reader(path) {
-        Ok(reader) => {reader}
-        Err(e) => {
-            eprintln!("cannot open {}: {}", path, e.to_string());
-            return
+    let reader =
+    match cli.cache_dir {
+        Some(dir) => {
+
+            match oneio::get_cache_reader(path, dir.as_str(), cli.cache_file, cli.cache_force) {
+                Ok(reader) => {reader}
+                Err(e) => {
+                    eprintln!("cannot open {}: {}", path, e.to_string());
+                    return
+                }
+            }
+        }
+        None => {
+            match oneio::get_reader(path) {
+                Ok(reader) => {reader}
+                Err(e) => {
+                    eprintln!("cannot open {}: {}", path, e.to_string());
+                    return
+                }
+            }
         }
     };
+
 
     let mut stdout = std::io::stdout();
 
