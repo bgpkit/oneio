@@ -7,11 +7,28 @@ mod bzip2;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
-use crate::OneIoError;
+use crate::{OneIoError, OneIoErrorKind};
 
 pub trait OneIOCompression {
     fn get_reader(raw_reader: Box<dyn Read>) -> Result<Box<dyn BufRead>, OneIoError>;
     fn get_writer(raw_writer: BufWriter<File>) -> Result<Box<dyn Write>, OneIoError>;
+}
+
+fn get_reader_raw(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
+    #[cfg(feature="remote")]
+        let raw_reader: Box<dyn Read> = match path.starts_with("http") {
+        true => {
+            let response = reqwest::blocking::get(path)?;
+            Box::new(response)
+        }
+        false => {
+            Box::new(std::fs::File::open(path)?)
+        }
+    };
+    #[cfg(not(feature="remote"))]
+    let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
+    let reader = Box::new(raw_reader);
+    Ok(Box::new(BufReader::new(reader)))
 }
 
 pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
@@ -48,6 +65,59 @@ pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
             Ok(Box::new(BufReader::new(reader)))
         }
     }
+}
+
+/// get file reader with local cache.
+///
+/// parameters:
+/// * `path`: file path to open, remote or local
+/// * `cache_dir`: path str to cache directory
+/// * `cache_file_name`: optional file name for cache file, default to use the same filename as the to-read file
+/// * `force_cache`: whether to force refresh cache file if a local cache file already exists
+pub fn get_cache_reader(
+    path: &str,
+    cache_dir: &str,
+    cache_file_name: Option<&str>,
+    force_cache: bool
+) -> Result<Box<dyn BufRead>, OneIoError> {
+    let dir_path = std::path::Path::new(cache_dir);
+    if !dir_path.is_dir() {
+        match std::fs::create_dir_all(dir_path) {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(OneIoError{ kind: OneIoErrorKind::CacheIoError(format!("cache directory creation failed: {}",e.to_string())) })
+            }
+        }
+    }
+
+    let cache_file_path = match cache_file_name {
+        None => {
+            let file_name = path.split('/').collect::<Vec<&str>>().into_iter().last().unwrap().to_string();
+            format!("{}/{}", cache_dir, file_name)
+        }
+        Some(p) => {p.to_string()}
+    };
+
+    // if cache file already exists
+    if !force_cache && std::path::Path::new(cache_file_path.as_str()).exists() {
+        return get_reader(cache_file_path.as_str());
+    }
+
+    // read all to cache file, no encode/decode happens
+    let mut reader = get_reader_raw(path)?;
+    let mut data: Vec<u8> = vec![];
+    reader.read_to_end(&mut data)?;
+    let mut writer = get_writer_raw(cache_file_path.as_str())?;
+    writer.write_all(&data).unwrap();
+    drop(writer);
+
+    // return reader from cache file
+    get_reader(cache_file_path.as_str())
+}
+
+fn get_writer_raw(path: &str) -> Result<Box<dyn Write>, OneIoError> {
+    let output_file = BufWriter::new(File::create(path)?);
+    Ok(Box::new(BufWriter::new(output_file)))
 }
 
 pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {

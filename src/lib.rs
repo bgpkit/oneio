@@ -56,6 +56,25 @@
 //! assert_eq!(lines[1].as_str(), "This is a test.");
 //! ```
 //!
+//! Cache data first, then read
+//! ```rust
+//! use std::io::BufRead;
+//! const TEST_TEXT: &str = "OneIO test file.
+//! This is a test.";
+//!
+//! let reader = oneio::get_cache_reader("https://spaces.bgpkit.org/oneio/test_data.txt.gz", "/tmp/oneio/cache/", None, false).unwrap();
+//! let lines = reader.lines().into_iter().map(|line| line.unwrap()).collect::<Vec<String>>();
+//!
+//! assert_eq!(lines.len(), 2);
+//! assert_eq!(lines[0].as_str(), "OneIO test file.");
+//! assert_eq!(lines[1].as_str(), "This is a test.");
+//!
+//! let mut reader = oneio::get_reader("/tmp/oneio/cache/test_data.txt.gz").unwrap();
+//! let mut text = "".to_string();
+//! reader.read_to_string(&mut text).unwrap();
+//! assert_eq!(text.as_str(), TEST_TEXT);
+//! ```
+//!
 //! ## Writer
 //!
 //! [get_writer] returns a generic writer that implements [Write], and handles decompression from the following types:
@@ -91,13 +110,8 @@
 mod error;
 mod oneio;
 
-use std::io::Write;
 pub use error::{OneIoError, OneIoErrorKind};
 
-pub fn get_reader(path: &str) -> Result<Box<dyn std::io::BufRead>, OneIoError> {
-    oneio::get_reader(path)
-}
-
-pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
-    oneio::get_writer(path)
-}
+pub use crate::oneio::get_reader;
+pub use crate::oneio::get_cache_reader;
+pub use crate::oneio::get_writer;

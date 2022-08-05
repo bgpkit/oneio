@@ -8,6 +8,7 @@ pub enum OneIoErrorKind {
     EofError(std::io::Error),
     IoError(std::io::Error),
     NotSupported(String),
+    CacheIoError(String),
 }
 
 #[derive(Debug)]
@@ -23,6 +24,7 @@ impl Display for OneIoError {
             OneIoErrorKind::EofError(e) => {e.to_string()}
             OneIoErrorKind::IoError(e) => {e.to_string()}
             OneIoErrorKind::NotSupported(msg) => {msg.clone()}
+            OneIoErrorKind::CacheIoError(msg) => {msg.clone()}
         };
         write!(f, "error: {}", msg)
     }
