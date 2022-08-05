@@ -18,6 +18,34 @@ fn test_read( file_path: &str ) {
     assert_eq!(lines[1].as_str(), "This is a test.");
 }
 
+fn test_read_cache( file_path: &str ) {
+
+    let cache_file_name = format!("./{}", file_path.split('/').collect::<Vec<&str>>().into_iter().last().unwrap().to_string());
+
+    let _ = std::fs::remove_file(cache_file_name.as_str());
+
+    // read from remote then cache
+    let mut reader = oneio::get_cache_reader(file_path, "./", None, true).unwrap();
+    let mut text = "".to_string();
+    reader.read_to_string(&mut text).unwrap();
+    assert_eq!(text.as_str(), TEST_TEXT);
+    drop(reader);
+
+    // read directly from cache
+    let mut reader = oneio::get_reader(cache_file_name.as_str()).unwrap();
+    let mut text = "".to_string();
+    reader.read_to_string(&mut text).unwrap();
+    assert_eq!(text.as_str(), TEST_TEXT);
+    drop(reader);
+
+    // read directly from remote
+    let mut reader = oneio::get_reader(file_path).unwrap();
+    let mut text = "".to_string();
+    reader.read_to_string(&mut text).unwrap();
+    assert_eq!(text.as_str(), TEST_TEXT);
+    drop(reader);
+}
+
 fn test_write ( to_write_file: &str , to_read_file: &str) {
     let mut text = "".to_string();
     oneio::get_reader(to_read_file).unwrap().read_to_string(&mut text).unwrap();
@@ -56,4 +84,12 @@ fn test_writer() {
     test_write("tests/test_write_data.txt.gz", "tests/test_data.txt.gz");
     test_write("tests/test_write_data.txt.bz2", "tests/test_data.txt.bz2");
     // lz4 writer is not currently supported
+}
+
+#[test]
+fn test_cache_reader() {
+    test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt");
+    test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt.gz");
+    test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt.bz2");
+    test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt.lz4");
 }
