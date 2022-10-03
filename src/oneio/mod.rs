@@ -48,14 +48,10 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
 /// println!("{}", text);
 /// ```
 pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<Box<dyn BufRead>, OneIoError> {
-    dbg!("get_remote_reader");
     let headers: HeaderMap = (&header).try_into().expect("invalid headers");
     let client = reqwest::blocking::Client::builder().default_headers(headers).build()?;
     let raw_reader: Box<dyn Read> = Box::new(client.execute(client.get(path).build()?)?);
-    dbg!("get_remote_reader");
-
     let file_type = path.split(".").collect::<Vec<&str>>().last().unwrap().clone();
-    dbg!("{}", file_type);
     match file_type {
         #[cfg(feature="gz")]
         "gz" | "gzip" => {
@@ -71,7 +67,6 @@ pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<
         }
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
-            dbg!("uncompressed");
             let reader = Box::new(raw_reader);
             Ok(Box::new(BufReader::new(reader)))
         }

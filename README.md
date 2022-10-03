@@ -88,3 +88,14 @@ oneio::get_reader(to_write_file).unwrap().read_to_string(&mut new_text).unwrap()
 assert_eq!(text.as_str(), new_text.as_str());
 std::fs::remove_file(to_write_file).unwrap();
 ```
+Read remote content with custom headers
+```rust
+use std::collections::HashMap;
+let mut reader = oneio::get_remote_reader(
+  "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
+  HashMap::from([("X-Custom-Auth-Key".to_string(), "TOKEN".to_string())])
+).unwrap();
+let mut text = "".to_string();
+reader.read_to_string(&mut text).unwrap();
+println!("{}", text);
+```
