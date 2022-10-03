@@ -34,7 +34,6 @@ fn main() {
     let reader =
     match cli.cache_dir {
         Some(dir) => {
-
             match oneio::get_cache_reader(path, dir.as_str(), cli.cache_file, cli.cache_force) {
                 Ok(reader) => {reader}
                 Err(e) => {

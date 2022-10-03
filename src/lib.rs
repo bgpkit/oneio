@@ -75,6 +75,18 @@
 //! assert_eq!(text.as_str(), TEST_TEXT);
 //! ```
 //!
+//! Read remote content with custom headers
+//! ```no_run
+//! use std::collections::HashMap;
+//! let mut reader = oneio::get_remote_reader(
+//!   "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
+//!   HashMap::from([("X-Custom-Auth-Key".to_string(), "TOKEN".to_string())])
+//! ).unwrap();
+//! let mut text = "".to_string();
+//! reader.read_to_string(&mut text).unwrap();
+//! println!("{}", text);
+//! ```
+//!
 //! ## Writer
 //!
 //! [get_writer] returns a generic writer that implements [Write], and handles decompression from the following types:
@@ -115,3 +127,5 @@ pub use error::{OneIoError, OneIoErrorKind};
 pub use crate::oneio::get_reader;
 pub use crate::oneio::get_cache_reader;
 pub use crate::oneio::get_writer;
+#[cfg(feature="remote")]
+pub use crate::oneio::get_remote_reader;

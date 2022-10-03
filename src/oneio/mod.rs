@@ -5,8 +5,10 @@ mod gzip;
 #[cfg(feature = "bz")]
 mod bzip2;
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use reqwest::header::HeaderMap;
 use crate::{OneIoError, OneIoErrorKind};
 
 pub trait OneIOCompression {
@@ -29,6 +31,51 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
     let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
     let reader = Box::new(raw_reader);
     Ok(Box::new(BufReader::new(reader)))
+}
+
+#[cfg(feature="remote")]
+/// get a reader for remote content with the capability to specify headers.
+///
+/// Example usage:
+/// ```no_run
+/// use std::collections::HashMap;
+/// let mut reader = oneio::get_remote_reader(
+///   "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
+///   HashMap::from([("X-Custom-Auth-Key".to_string(), "TOKEN".to_string())])
+/// ).unwrap();
+/// let mut text = "".to_string();
+/// reader.read_to_string(&mut text).unwrap();
+/// println!("{}", text);
+/// ```
+pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<Box<dyn BufRead>, OneIoError> {
+    dbg!("get_remote_reader");
+    let headers: HeaderMap = (&header).try_into().expect("invalid headers");
+    let client = reqwest::blocking::Client::builder().default_headers(headers).build()?;
+    let raw_reader: Box<dyn Read> = Box::new(client.execute(client.get(path).build()?)?);
+    dbg!("get_remote_reader");
+
+    let file_type = path.split(".").collect::<Vec<&str>>().last().unwrap().clone();
+    dbg!("{}", file_type);
+    match file_type {
+        #[cfg(feature="gz")]
+        "gz" | "gzip" => {
+            gzip::OneIOGzip::get_reader(raw_reader)
+        }
+        #[cfg(feature="bz")]
+        "bz2" | "bz" => {
+            bzip2::OneIOBzip2::get_reader(raw_reader)
+        }
+        #[cfg(feature="lz4")]
+        "lz4"| "lz" => {
+            lz4::OneIOLz4::get_reader(raw_reader)
+        }
+        _ => {
+            // unknown file type of file {}. try to read as uncompressed file
+            dbg!("uncompressed");
+            let reader = Box::new(raw_reader);
+            Ok(Box::new(BufReader::new(reader)))
+        }
+    }
 }
 
 pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
