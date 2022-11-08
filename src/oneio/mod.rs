@@ -73,6 +73,22 @@ pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<
     }
 }
 
+pub fn download(remote_path: &str, local_path: &str, header: Option<HashMap<String, String>>) -> Result<(), OneIoError> {
+    let headers: HeaderMap = match &header {
+        None => {HeaderMap::default()}
+        Some(header) => {
+            header.try_into().expect("invalid headers")
+        }
+    };
+    let client = reqwest::blocking::Client::builder().default_headers(headers).build()?;
+    let mut response = client.execute(client.get(remote_path).build()?)?;
+    // let raw_reader: Box<dyn Read> = Box::new(client.execute(client.get(path).build()?)?);
+    let mut writer: Box<dyn Write> = get_writer_raw(local_path)?;
+
+    response.copy_to(&mut writer)?;
+    Ok(())
+}
+
 pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
     #[cfg(feature="remote")]
     let raw_reader: Box<dyn Read> = match path.starts_with("http") {

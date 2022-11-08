@@ -11,16 +11,24 @@ struct Cli {
     #[clap(name = "FILE", parse(from_os_str))]
     file: PathBuf,
 
-    /// cache reading to specified directory
+    /// download the file to current directory, similar to run `wget`
     #[clap(short, long)]
+    download: bool,
+
+    /// output file path
+    #[clap(short, long)]
+    outfile: Option<PathBuf>,
+
+    /// cache reading to specified directory
+    #[clap(long)]
     cache_dir: Option<String>,
 
     /// force re-caching if local cache already exists
-    #[clap(short, long)]
+    #[clap(long)]
     cache_force: bool,
 
     /// specify cache file name
-    #[clap(short, long)]
+    #[clap(long)]
     cache_file: Option<String>,
 
     /// read through file and only print out stats
@@ -31,6 +39,34 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
     let path: &str = cli.file.to_str().unwrap();
+    let outfile: Option<PathBuf> = cli.outfile;
+    if cli.download {
+        let out_path = match outfile {
+            None => {
+                // infer file path and download to current directory
+                if !path.starts_with("http") {
+                    eprintln!("{} is not a remote file, skip downloading", path);
+                    return
+                }
+                path.split("/").last().unwrap().to_string()
+            }
+            Some(p) => {
+                p.to_str().unwrap().to_string()
+            }
+        };
+
+        match oneio::download(path, out_path.as_str(), None) {
+            Ok(_) => {
+                println!("file successfully downloaded to {}", out_path.as_str());
+            }
+            Err(e) => {
+                eprintln!("file download error: {}", e.to_string());
+            }
+        }
+
+        return
+    }
+
     let reader =
     match cli.cache_dir {
         Some(dir) => {
