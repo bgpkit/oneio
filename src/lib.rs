@@ -129,3 +129,5 @@ pub use crate::oneio::get_cache_reader;
 pub use crate::oneio::get_writer;
 #[cfg(feature="remote")]
 pub use crate::oneio::get_remote_reader;
+#[cfg(feature="remote")]
+pub use crate::oneio::download;
