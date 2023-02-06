@@ -1,4 +1,10 @@
 # OneIO
+
+[![Rust](https://github.com/bgpkit/oneio/actions/workflows/rust.yml/badge.svg)](https://github.com/bgpkit/oneio/actions/workflows/rust.yml)
+[![Crates.io](https://img.shields.io/crates/v/oneio)](https://crates.io/crates/oneio)
+[![Docs.rs](https://docs.rs/oneio/badge.svg)](https://docs.rs/oneio)
+[![License](https://img.shields.io/crates/l/oneio)](https://raw.githubusercontent.com/bgpkit/oneio/main/LICENSE)
+
 OneIO is a Rust library that provides unified simple IO interface for reading and writing to and from data files from different sources and compressions.
 
 ## Usage and Feature Flags
