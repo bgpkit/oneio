@@ -48,7 +48,7 @@ fn main() {
                     eprintln!("{} is not a remote file, skip downloading", path);
                     return
                 }
-                path.split("/").last().unwrap().to_string()
+                path.split('/').last().unwrap().to_string()
             }
             Some(p) => {
                 p.to_str().unwrap().to_string()
@@ -60,7 +60,7 @@ fn main() {
                 println!("file successfully downloaded to {}", out_path.as_str());
             }
             Err(e) => {
-                eprintln!("file download error: {}", e.to_string());
+                eprintln!("file download error: {}", e);
             }
         }
 
@@ -73,7 +73,7 @@ fn main() {
             match oneio::get_cache_reader(path, dir.as_str(), cli.cache_file, cli.cache_force) {
                 Ok(reader) => {reader}
                 Err(e) => {
-                    eprintln!("cannot open {}: {}", path, e.to_string());
+                    eprintln!("cannot open {}: {}", path, e);
                     return
                 }
             }
@@ -82,7 +82,7 @@ fn main() {
             match oneio::get_reader(path) {
                 Ok(reader) => {reader}
                 Err(e) => {
-                    eprintln!("cannot open {}: {}", path, e.to_string());
+                    eprintln!("cannot open {}: {}", path, e);
                     return
                 }
             }
@@ -99,7 +99,7 @@ fn main() {
         let line = match line {
             Ok(l) => {l}
             Err(e) => {
-                eprintln!("cannot read line from {}: {}", path, e.to_string());
+                eprintln!("cannot read line from {}: {}", path, e);
                 return;
             }
         };

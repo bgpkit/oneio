@@ -5,6 +5,8 @@ use std::fmt::{Display, Formatter};
 pub enum OneIoErrorKind {
     #[cfg(feature="remote")]
     RemoteIoError(reqwest::Error),
+    #[cfg(feature="json")]
+    JsonParsingError(serde_json::Error),
     EofError(std::io::Error),
     IoError(std::io::Error),
     NotSupported(String),
@@ -21,6 +23,8 @@ impl Display for OneIoError {
         let msg = match &self.kind {
             #[cfg(feature="remote")]
             OneIoErrorKind::RemoteIoError(e) => {e.to_string()}
+            #[cfg(feature="json")]
+            OneIoErrorKind::JsonParsingError(e) => {e.to_string()},
             OneIoErrorKind::EofError(e) => {e.to_string()}
             OneIoErrorKind::IoError(e) => {e.to_string()}
             OneIoErrorKind::NotSupported(msg) => {msg.clone()}
@@ -50,6 +54,16 @@ impl From<std::io::Error> for OneIoError {
                 std::io::ErrorKind::UnexpectedEof => { OneIoErrorKind::EofError(io_error)}
                 _ => OneIoErrorKind::IoError(io_error)
             }
+        }
+    }
+}
+
+
+#[cfg(feature="json")]
+impl From<serde_json::Error> for OneIoError {
+    fn from(error: serde_json::Error) -> Self {
+        OneIoError{
+            kind: OneIoErrorKind::JsonParsingError(error)
         }
     }
 }
