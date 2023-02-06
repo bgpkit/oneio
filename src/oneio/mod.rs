@@ -5,9 +5,11 @@ mod gzip;
 #[cfg(feature = "bz")]
 mod bzip2;
 
+#[cfg(feature="remote")]
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+#[cfg(feature="remote")]
 use reqwest::header::HeaderMap;
 use crate::{OneIoError, OneIoErrorKind};
 
@@ -73,6 +75,7 @@ pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<
     }
 }
 
+#[cfg(feature="remote")]
 pub fn download(remote_path: &str, local_path: &str, header: Option<HashMap<String, String>>) -> Result<(), OneIoError> {
     let headers: HeaderMap = match &header {
         None => {HeaderMap::default()}
