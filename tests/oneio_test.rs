@@ -22,12 +22,12 @@ fn test_read( file_path: &str ) {
 
 fn test_read_cache( file_path: &str ) {
 
-    let cache_file_name = format!("./{}", file_path.split('/').collect::<Vec<&str>>().into_iter().last().unwrap().to_string());
+    let cache_file_name = format!("/tmp/{}", file_path.split('/').collect::<Vec<&str>>().into_iter().last().unwrap().to_string());
 
     let _ = std::fs::remove_file(cache_file_name.as_str());
 
     // read from remote then cache
-    let mut reader = oneio::get_cache_reader(file_path, "./", None, true).unwrap();
+    let mut reader = oneio::get_cache_reader(file_path, "/tmp", None, true).unwrap();
     let mut text = "".to_string();
     reader.read_to_string(&mut text).unwrap();
     assert_eq!(text.as_str(), TEST_TEXT);
