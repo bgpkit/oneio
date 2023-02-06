@@ -13,11 +13,12 @@
 //! ```
 //!
 //! Supported feature flags:
-//! - `all` (default): all flags (`["gz", "bz", "lz", "remote"]`)
+//! - `all` (default): all flags (`["gz", "bz", "lz", "remote", "json"]`)
 //! - `remote`: allow reading from remote files
 //! - `gz`: support `gzip` files
 //! - `bz`: support `bzip2` files
 //! - `lz`: support `lz4` files
+//! - `json`: allow reading JSON content into structs directly
 //!
 //! ## Reader
 //!
