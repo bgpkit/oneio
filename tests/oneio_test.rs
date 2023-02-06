@@ -7,10 +7,11 @@ This is a test.";
 
 fn test_read( file_path: &str ) {
     let mut reader = oneio::get_reader(file_path).unwrap();
-
     let mut text = "".to_string();
     reader.read_to_string(&mut text).unwrap();
     assert_eq!(text.as_str(), TEST_TEXT);
+
+    assert_eq!(oneio::read_to_string(file_path).unwrap().as_str(), TEST_TEXT);
 
     let reader = oneio::get_reader(file_path).unwrap();
     let lines = reader.lines().into_iter().map(|line| line.unwrap()).collect::<Vec<String>>();
@@ -88,7 +89,6 @@ fn test_reader_remote_with_header() {
 
     let mut text = "".to_string();
     reader.read_to_string(&mut text).unwrap();
-    println!("{}", text);
 }
 
 #[test]

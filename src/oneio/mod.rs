@@ -92,6 +92,14 @@ pub fn download(remote_path: &str, local_path: &str, header: Option<HashMap<Stri
     Ok(())
 }
 
+/// Convenient function to directly read remote or local content to a String
+pub fn read_to_string(path: &str) -> Result<String, OneIoError> {
+    let mut reader = get_reader(path)?;
+    let mut content = String::new();
+    reader.read_to_string(&mut content)?;
+    Ok(content)
+}
+
 pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
     #[cfg(feature="remote")]
     let raw_reader: Box<dyn Read> = match path.starts_with("http") {
