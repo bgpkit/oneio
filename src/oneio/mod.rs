@@ -53,7 +53,7 @@ pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<
     let headers: HeaderMap = (&header).try_into().expect("invalid headers");
     let client = reqwest::blocking::Client::builder().default_headers(headers).build()?;
     let raw_reader: Box<dyn Read> = Box::new(client.execute(client.get(path).build()?)?);
-    let file_type = path.split(".").collect::<Vec<&str>>().last().unwrap().clone();
+    let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature="gz")]
         "gz" | "gzip" => {
@@ -122,7 +122,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
     #[cfg(not(feature="remote"))]
     let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
 
-    let file_type = path.split(".").collect::<Vec<&str>>().last().unwrap().clone();
+    let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature="gz")]
         "gz" | "gzip" => {
@@ -162,7 +162,7 @@ pub fn get_cache_reader(
         match std::fs::create_dir_all(dir_path) {
             Ok(_) => {}
             Err(e) => {
-                return Err(OneIoError{ kind: OneIoErrorKind::CacheIoError(format!("cache directory creation failed: {}",e.to_string())) })
+                return Err(OneIoError{ kind: OneIoErrorKind::CacheIoError(format!("cache directory creation failed: {}",e)) })
             }
         }
     }
@@ -200,7 +200,7 @@ fn get_writer_raw(path: &str) -> Result<Box<dyn Write>, OneIoError> {
 pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
     let output_file = BufWriter::new(File::create(path)?);
 
-    let file_type = path.split(".").collect::<Vec<&str>>().last().unwrap().clone();
+    let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature = "gz")]
         "gz" | "gzip" => {
