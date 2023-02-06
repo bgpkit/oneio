@@ -33,7 +33,7 @@ serde_json = {version="1.0", optional=true }
 [features]
 default = ["all"]
 all = ["lib_only", "bin"]
-lib_only = ["remote", "gz", "bz", "lz"]
+lib_only = ["remote", "gz", "bz", "lz", "json"]
 
 remote=["reqwest"]
 gz = ["flate2"]
