@@ -128,6 +128,8 @@ pub use crate::oneio::get_reader;
 pub use crate::oneio::get_cache_reader;
 pub use crate::oneio::get_writer;
 pub use crate::oneio::read_to_string;
+#[cfg(feature="json")]
+pub use crate::oneio::read_json_struct;
 #[cfg(feature="remote")]
 pub use crate::oneio::get_remote_reader;
 #[cfg(feature="remote")]

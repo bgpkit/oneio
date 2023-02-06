@@ -106,3 +106,25 @@ fn test_cache_reader() {
     test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt.bz2");
     test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt.lz4");
 }
+
+#[test]
+fn test_read_json_struct() {
+    #[derive(serde::Deserialize, Debug)]
+    struct Data {
+        purpose: String,
+        version: u32,
+        meta: SubData
+    }
+    #[derive(serde::Deserialize, Debug)]
+    struct SubData {
+        float: f64,
+        success: bool
+    }
+
+    let data = oneio::read_json_struct::<Data>("https://spaces.bgpkit.org/oneio/test_data.json").unwrap();
+
+    assert_eq!(data.purpose, "test".to_string());
+    assert_eq!(data.version, 1);
+    assert_eq!(data.meta.float, 1.1);
+    assert_eq!(data.meta.success, true);
+}

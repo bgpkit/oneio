@@ -27,10 +27,12 @@ flate2 = {version = "1", optional=true }
 bzip2 = {version = "0.4", optional = true }
 lz4 = {version = "1.23", optional = true }
 clap = {version="3.2", features=["derive"], optional=true}
+serde = {version="1.0", optional=true }
+serde_json = {version="1.0", optional=true }
 
 [features]
 default = ["all"]
-all = ["remote", "gz", "bz", "lz", "bin"]
+all = ["lib_only", "bin"]
 lib_only = ["remote", "gz", "bz", "lz"]
 
 remote=["reqwest"]
@@ -38,3 +40,7 @@ gz = ["flate2"]
 bz = ["bzip2"]
 lz = ["lz4"]
 bin = ["clap"]
+json = ["serde", "serde_json"]
+
+[dev-dependencies]
+serde = {version="1.0", features=["derive"]}
