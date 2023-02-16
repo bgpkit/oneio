@@ -8,17 +8,17 @@ mod bzip2;
 #[cfg(feature="remote")]
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufWriter, Read, Write};
 #[cfg(feature="remote")]
 use reqwest::header::HeaderMap;
 use crate::{OneIoError, OneIoErrorKind};
 
 pub trait OneIOCompression {
-    fn get_reader(raw_reader: Box<dyn Read>) -> Result<Box<dyn BufRead>, OneIoError>;
+    fn get_reader(raw_reader: Box<dyn Read>) -> Result<Box<dyn Read>, OneIoError>;
     fn get_writer(raw_writer: BufWriter<File>) -> Result<Box<dyn Write>, OneIoError>;
 }
 
-fn get_reader_raw(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
+fn get_reader_raw(path: &str) -> Result<Box<dyn Read>, OneIoError> {
     #[cfg(feature="remote")]
         let raw_reader: Box<dyn Read> = match path.starts_with("http") {
         true => {
@@ -30,9 +30,8 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
         }
     };
     #[cfg(not(feature="remote"))]
-    let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
-    let reader = Box::new(raw_reader);
-    Ok(Box::new(BufReader::new(reader)))
+        let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
+    Ok(raw_reader)
 }
 
 #[cfg(feature="remote")]
@@ -49,7 +48,7 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
 /// reader.read_to_string(&mut text).unwrap();
 /// println!("{}", text);
 /// ```
-pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<Box<dyn BufRead>, OneIoError> {
+pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<Box<dyn Read>, OneIoError> {
     let headers: HeaderMap = (&header).try_into().expect("invalid headers");
     let client = reqwest::blocking::Client::builder().default_headers(headers).build()?;
     let raw_reader: Box<dyn Read> = Box::new(client.execute(client.get(path).build()?)?);
@@ -69,8 +68,7 @@ pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<
         }
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
-            let reader = Box::new(raw_reader);
-            Ok(Box::new(BufReader::new(reader)))
+            Ok(Box::new(raw_reader))
         }
     }
 }
@@ -108,7 +106,7 @@ pub fn read_json_struct<T: serde::de::DeserializeOwned>(path: &str) -> Result<T,
     Ok(res)
 }
 
-pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
+pub fn get_reader(path: &str) -> Result<Box<dyn Read>, OneIoError> {
     #[cfg(feature="remote")]
     let raw_reader: Box<dyn Read> = match path.starts_with("http") {
         true => {
@@ -138,8 +136,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn BufRead>, OneIoError> {
         }
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
-            let reader = Box::new(raw_reader);
-            Ok(Box::new(BufReader::new(reader)))
+            Ok(Box::new(raw_reader))
         }
     }
 }
@@ -156,7 +153,7 @@ pub fn get_cache_reader(
     cache_dir: &str,
     cache_file_name: Option<String>,
     force_cache: bool
-) -> Result<Box<dyn BufRead>, OneIoError> {
+) -> Result<Box<dyn Read>, OneIoError> {
     let dir_path = std::path::Path::new(cache_dir);
     if !dir_path.is_dir() {
         match std::fs::create_dir_all(dir_path) {

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, BufReader, Write};
 use oneio;
 
 const TEST_TEXT: &str = "OneIO test file.
@@ -13,7 +13,7 @@ fn test_read( file_path: &str ) {
 
     assert_eq!(oneio::read_to_string(file_path).unwrap().as_str(), TEST_TEXT);
 
-    let reader = oneio::get_reader(file_path).unwrap();
+    let reader = BufReader::new(oneio::get_reader(file_path).unwrap());
     let lines = reader.lines().into_iter().map(|line| line.unwrap()).collect::<Vec<String>>();
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[0].as_str(), "OneIO test file.");
