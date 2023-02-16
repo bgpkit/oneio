@@ -1,4 +1,4 @@
-use std::io::BufRead;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use clap::Parser;
 use std::io::Write;
@@ -67,27 +67,30 @@ fn main() {
         return
     }
 
-    let reader =
-    match cli.cache_dir {
-        Some(dir) => {
-            match oneio::get_cache_reader(path, dir.as_str(), cli.cache_file, cli.cache_force) {
-                Ok(reader) => {reader}
-                Err(e) => {
-                    eprintln!("cannot open {}: {}", path, e);
-                    return
+    let reader = Box::new(
+        BufReader::new(
+            match cli.cache_dir {
+                Some(dir) => {
+                    match oneio::get_cache_reader(path, dir.as_str(), cli.cache_file, cli.cache_force) {
+                        Ok(reader) => {reader}
+                        Err(e) => {
+                            eprintln!("cannot open {}: {}", path, e);
+                            return
+                        }
+                    }
+                }
+                None => {
+                    match oneio::get_reader(path) {
+                        Ok(reader) => {reader}
+                        Err(e) => {
+                            eprintln!("cannot open {}: {}", path, e);
+                            return
+                        }
+                    }
                 }
             }
-        }
-        None => {
-            match oneio::get_reader(path) {
-                Ok(reader) => {reader}
-                Err(e) => {
-                    eprintln!("cannot open {}: {}", path, e);
-                    return
-                }
-            }
-        }
-    };
+        )
+    );
 
 
     let mut stdout = std::io::stdout();

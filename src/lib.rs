@@ -46,10 +46,11 @@
 //! Read into lines:
 //! ```rust
 //! use std::io::BufRead;
+//! use std::io::BufReader;
 //! const TEST_TEXT: &str = "OneIO test file.
 //! This is a test.";
 //!
-//! let reader = oneio::get_reader("https://spaces.bgpkit.org/oneio/test_data.txt.gz").unwrap();
+//! let reader = BufReader::new(oneio::get_reader("https://spaces.bgpkit.org/oneio/test_data.txt.gz").unwrap());
 //! let lines = reader.lines().into_iter().map(|line| line.unwrap()).collect::<Vec<String>>();
 //!
 //! assert_eq!(lines.len(), 2);
@@ -60,10 +61,11 @@
 //! Cache data first, then read
 //! ```rust
 //! use std::io::BufRead;
+//! use std::io::BufReader;
 //! const TEST_TEXT: &str = "OneIO test file.
 //! This is a test.";
 //!
-//! let reader = oneio::get_cache_reader("https://spaces.bgpkit.org/oneio/test_data.txt.gz", "/tmp/oneio/cache/", None, false).unwrap();
+//! let reader = BufReader::new(oneio::get_cache_reader("https://spaces.bgpkit.org/oneio/test_data.txt.gz", "/tmp/oneio/cache/", None, false).unwrap());
 //! let lines = reader.lines().into_iter().map(|line| line.unwrap()).collect::<Vec<String>>();
 //!
 //! assert_eq!(lines.len(), 2);
