@@ -50,7 +50,7 @@
 //! const TEST_TEXT: &str = "OneIO test file.
 //! This is a test.";
 //!
-//! let lines = oneio::read_lines("https://spaces.bgpkit.org/oneio/test_data.txt.gz")
+//! let lines = oneio::read_lines("https://spaces.bgpkit.org/oneio/test_data.txt.gz").unwrap()
 //!     .map(|line| line.unwrap()).collect::<Vec<String>>();
 //!
 //! assert_eq!(lines.len(), 2);
