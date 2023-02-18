@@ -8,7 +8,7 @@ mod bzip2;
 #[cfg(feature="remote")]
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 #[cfg(feature="remote")]
 use reqwest::header::HeaderMap;
 use crate::{OneIoError, OneIoErrorKind};
@@ -106,6 +106,14 @@ pub fn read_json_struct<T: serde::de::DeserializeOwned>(path: &str) -> Result<T,
     Ok(res)
 }
 
+/// convenient function to read a file and returns a line iterator.
+pub fn read_lines(path:&str) -> Result<Lines<BufReader<Box<dyn Read>>>, OneIoError> {
+    let reader = get_reader(path)?;
+    let buf_reader = BufReader::new(reader);
+    Ok(buf_reader.lines())
+}
+
+/// get a Box<dyn Read> reader
 pub fn get_reader(path: &str) -> Result<Box<dyn Read>, OneIoError> {
     #[cfg(feature="remote")]
     let raw_reader: Box<dyn Read> = match path.starts_with("http") {

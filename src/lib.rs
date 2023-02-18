@@ -50,8 +50,8 @@
 //! const TEST_TEXT: &str = "OneIO test file.
 //! This is a test.";
 //!
-//! let reader = BufReader::new(oneio::get_reader("https://spaces.bgpkit.org/oneio/test_data.txt.gz").unwrap());
-//! let lines = reader.lines().into_iter().map(|line| line.unwrap()).collect::<Vec<String>>();
+//! let lines = oneio::read_lines("https://spaces.bgpkit.org/oneio/test_data.txt.gz")
+//!     .map(|line| line.unwrap()).collect::<Vec<String>>();
 //!
 //! assert_eq!(lines.len(), 2);
 //! assert_eq!(lines[0].as_str(), "OneIO test file.");
@@ -129,6 +129,7 @@ pub use error::{OneIoError, OneIoErrorKind};
 
 pub use crate::oneio::get_reader;
 pub use crate::oneio::get_cache_reader;
+pub use crate::oneio::read_lines;
 pub use crate::oneio::get_writer;
 pub use crate::oneio::read_to_string;
 #[cfg(feature="json")]
