@@ -8,7 +8,7 @@ use std::io::Write;
 #[clap(propagate_version = true)]
 struct Cli {
     /// file to open, remote or local
-    #[clap(name = "FILE", parse(from_os_str))]
+    #[clap(name = "FILE")]
     file: PathBuf,
 
     /// download the file to current directory, similar to run `wget`
