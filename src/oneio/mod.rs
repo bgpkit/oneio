@@ -14,7 +14,7 @@ use reqwest::header::HeaderMap;
 use crate::{OneIoError, OneIoErrorKind};
 
 pub trait OneIOCompression {
-    fn get_reader(raw_reader: Box<dyn Read>) -> Result<Box<dyn Read>, OneIoError>;
+    fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError>;
     fn get_writer(raw_writer: BufWriter<File>) -> Result<Box<dyn Write>, OneIoError>;
 }
 
@@ -48,10 +48,10 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn Read>, OneIoError> {
 /// reader.read_to_string(&mut text).unwrap();
 /// println!("{}", text);
 /// ```
-pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<Box<dyn Read>, OneIoError> {
+pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<Box<dyn Read + Send>, OneIoError> {
     let headers: HeaderMap = (&header).try_into().expect("invalid headers");
     let client = reqwest::blocking::Client::builder().default_headers(headers).build()?;
-    let raw_reader: Box<dyn Read> = Box::new(client.execute(client.get(path).build()?)?);
+    let raw_reader: Box<dyn Read + Send> = Box::new(client.execute(client.get(path).build()?)?);
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature="gz")]
@@ -107,16 +107,16 @@ pub fn read_json_struct<T: serde::de::DeserializeOwned>(path: &str) -> Result<T,
 }
 
 /// convenient function to read a file and returns a line iterator.
-pub fn read_lines(path:&str) -> Result<Lines<BufReader<Box<dyn Read>>>, OneIoError> {
+pub fn read_lines(path:&str) -> Result<Lines<BufReader<Box<dyn Read+Send>>>, OneIoError> {
     let reader = get_reader(path)?;
     let buf_reader = BufReader::new(reader);
     Ok(buf_reader.lines())
 }
 
 /// get a Box<dyn Read> reader
-pub fn get_reader(path: &str) -> Result<Box<dyn Read>, OneIoError> {
+pub fn get_reader(path: &str) -> Result<Box<dyn Read+Send>, OneIoError> {
     #[cfg(feature="remote")]
-    let raw_reader: Box<dyn Read> = match path.starts_with("http") {
+    let raw_reader: Box<dyn Read + Send> = match path.starts_with("http") {
         true => {
             let response = reqwest::blocking::get(path)?;
             Box::new(response)
@@ -126,7 +126,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read>, OneIoError> {
         }
     };
     #[cfg(not(feature="remote"))]
-    let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
+    let raw_reader: Box<dyn Read + Send> = Box::new(std::fs::File::open(path)?);
 
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
@@ -161,7 +161,7 @@ pub fn get_cache_reader(
     cache_dir: &str,
     cache_file_name: Option<String>,
     force_cache: bool
-) -> Result<Box<dyn Read>, OneIoError> {
+) -> Result<Box<dyn Read + Send>, OneIoError> {
     let dir_path = std::path::Path::new(cache_dir);
     if !dir_path.is_dir() {
         match std::fs::create_dir_all(dir_path) {
