@@ -9,7 +9,7 @@ use crate::OneIoError;
 pub(crate) struct OneIOGzip;
 
 impl OneIOCompression for OneIOGzip {
-    fn get_reader(raw_reader: Box<dyn Read>) -> Result<Box<dyn Read>, OneIoError> {
+    fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError> {
         Ok(Box::new(GzDecoder::new(raw_reader)))
     }
 

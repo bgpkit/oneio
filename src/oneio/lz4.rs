@@ -7,7 +7,7 @@ use crate::{OneIoError, OneIoErrorKind};
 pub(crate) struct OneIOLz4;
 
 impl OneIOCompression for OneIOLz4 {
-    fn get_reader(raw_reader: Box<dyn Read>) -> Result<Box<dyn Read>, OneIoError> {
+    fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError> {
         Ok(Box::new(Decoder::new(raw_reader).unwrap()))
     }
 
