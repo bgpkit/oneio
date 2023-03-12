@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufWriter, Read, Write};
 use lz4::Decoder;
 use crate::oneio::OneIOCompression;
-use crate::{OneIoError, OneIoErrorKind};
+use crate::OneIoError;
 
 pub(crate) struct OneIOLz4;
 
@@ -12,7 +12,7 @@ impl OneIOCompression for OneIOLz4 {
     }
 
     fn get_writer(_raw_writer: BufWriter<File>) -> Result<Box<dyn Write>, OneIoError> {
-        Err(OneIoError{ kind: OneIoErrorKind::NotSupported("lz4 writer is not currently supported.".to_string()) })
+        Err(OneIoError::NotSupported("lz4 writer is not currently supported.".to_string()))
     }
 }
 
