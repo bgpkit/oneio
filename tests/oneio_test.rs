@@ -1,27 +1,41 @@
+use oneio;
 use std::collections::HashMap;
 use std::io::Write;
-use oneio;
 
 const TEST_TEXT: &str = "OneIO test file.
 This is a test.";
 
-fn test_read( file_path: &str ) {
+fn test_read(file_path: &str) {
     let mut reader = oneio::get_reader(file_path).unwrap();
     let mut text = "".to_string();
     reader.read_to_string(&mut text).unwrap();
     assert_eq!(text.as_str(), TEST_TEXT);
 
-    assert_eq!(oneio::read_to_string(file_path).unwrap().as_str(), TEST_TEXT);
+    assert_eq!(
+        oneio::read_to_string(file_path).unwrap().as_str(),
+        TEST_TEXT
+    );
 
-    let lines = oneio::read_lines(file_path).unwrap().map(|line| line.unwrap()).collect::<Vec<String>>();
+    let lines = oneio::read_lines(file_path)
+        .unwrap()
+        .map(|line| line.unwrap())
+        .collect::<Vec<String>>();
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[0].as_str(), "OneIO test file.");
     assert_eq!(lines[1].as_str(), "This is a test.");
 }
 
-fn test_read_cache( file_path: &str ) {
-
-    let cache_file_name = format!("/tmp/{}", file_path.split('/').collect::<Vec<&str>>().into_iter().last().unwrap().to_string());
+fn test_read_cache(file_path: &str) {
+    let cache_file_name = format!(
+        "/tmp/{}",
+        file_path
+            .split('/')
+            .collect::<Vec<&str>>()
+            .into_iter()
+            .last()
+            .unwrap()
+            .to_string()
+    );
 
     let _ = std::fs::remove_file(cache_file_name.as_str());
 
@@ -47,21 +61,26 @@ fn test_read_cache( file_path: &str ) {
     drop(reader);
 }
 
-fn test_write ( to_write_file: &str , to_read_file: &str) {
+fn test_write(to_write_file: &str, to_read_file: &str) {
     let mut text = "".to_string();
-    oneio::get_reader(to_read_file).unwrap().read_to_string(&mut text).unwrap();
+    oneio::get_reader(to_read_file)
+        .unwrap()
+        .read_to_string(&mut text)
+        .unwrap();
 
     let mut writer = oneio::get_writer(to_write_file).unwrap();
     writer.write_all(text.as_ref()).unwrap();
     drop(writer);
 
     let mut new_text = "".to_string();
-    oneio::get_reader(to_write_file).unwrap().read_to_string(&mut new_text).unwrap();
+    oneio::get_reader(to_write_file)
+        .unwrap()
+        .read_to_string(&mut new_text)
+        .unwrap();
 
     assert_eq!(text.as_str(), new_text.as_str());
     std::fs::remove_file(to_write_file).unwrap();
 }
-
 
 #[test]
 fn test_reader_local() {
@@ -112,15 +131,16 @@ fn test_read_json_struct() {
     struct Data {
         purpose: String,
         version: u32,
-        meta: SubData
+        meta: SubData,
     }
     #[derive(serde::Deserialize, Debug)]
     struct SubData {
         float: f64,
-        success: bool
+        success: bool,
     }
 
-    let data = oneio::read_json_struct::<Data>("https://spaces.bgpkit.org/oneio/test_data.json").unwrap();
+    let data =
+        oneio::read_json_struct::<Data>("https://spaces.bgpkit.org/oneio/test_data.json").unwrap();
 
     assert_eq!(data.purpose, "test".to_string());
     assert_eq!(data.version, 1);

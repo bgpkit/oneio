@@ -1,10 +1,10 @@
-use std::fs::File;
-use std::io::{BufWriter, Read, Write};
-use bzip2::Compression;
-use bzip2::read::BzDecoder;
-use bzip2::write::BzEncoder;
 use crate::oneio::OneIOCompression;
 use crate::OneIoError;
+use bzip2::read::BzDecoder;
+use bzip2::write::BzEncoder;
+use bzip2::Compression;
+use std::fs::File;
+use std::io::{BufWriter, Read, Write};
 
 pub(crate) struct OneIOBzip2;
 
@@ -17,4 +17,3 @@ impl OneIOCompression for OneIOBzip2 {
         Ok(Box::new(BzEncoder::new(raw_writer, Compression::default())))
     }
 }
-

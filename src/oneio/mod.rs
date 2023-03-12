@@ -1,17 +1,17 @@
-#[cfg(feature = "lz")]
-mod lz4;
-#[cfg(feature = "gz")]
-mod gzip;
 #[cfg(feature = "bz")]
 mod bzip2;
+#[cfg(feature = "gz")]
+mod gzip;
+#[cfg(feature = "lz")]
+mod lz4;
 
-#[cfg(feature="remote")]
+use crate::OneIoError;
+#[cfg(feature = "remote")]
+use reqwest::header::HeaderMap;
+#[cfg(feature = "remote")]
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
-#[cfg(feature="remote")]
-use reqwest::header::HeaderMap;
-use crate::OneIoError;
 
 pub trait OneIOCompression {
     fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError>;
@@ -19,22 +19,20 @@ pub trait OneIOCompression {
 }
 
 fn get_reader_raw(path: &str) -> Result<Box<dyn Read>, OneIoError> {
-    #[cfg(feature="remote")]
-        let raw_reader: Box<dyn Read> = match path.starts_with("http") {
+    #[cfg(feature = "remote")]
+    let raw_reader: Box<dyn Read> = match path.starts_with("http") {
         true => {
             let response = reqwest::blocking::get(path)?;
             Box::new(response)
         }
-        false => {
-            Box::new(std::fs::File::open(path)?)
-        }
+        false => Box::new(std::fs::File::open(path)?),
     };
-    #[cfg(not(feature="remote"))]
-        let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
+    #[cfg(not(feature = "remote"))]
+    let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
     Ok(raw_reader)
 }
 
-#[cfg(feature="remote")]
+#[cfg(feature = "remote")]
 /// get a reader for remote content with the capability to specify headers.
 ///
 /// Example usage:
@@ -48,24 +46,23 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn Read>, OneIoError> {
 /// reader.read_to_string(&mut text).unwrap();
 /// println!("{}", text);
 /// ```
-pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<Box<dyn Read + Send>, OneIoError> {
+pub fn get_remote_reader(
+    path: &str,
+    header: HashMap<String, String>,
+) -> Result<Box<dyn Read + Send>, OneIoError> {
     let headers: HeaderMap = (&header).try_into().expect("invalid headers");
-    let client = reqwest::blocking::Client::builder().default_headers(headers).build()?;
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .build()?;
     let raw_reader: Box<dyn Read + Send> = Box::new(client.execute(client.get(path).build()?)?);
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
-        #[cfg(feature="gz")]
-        "gz" | "gzip" => {
-            gzip::OneIOGzip::get_reader(raw_reader)
-        }
-        #[cfg(feature="bz")]
-        "bz2" | "bz" => {
-            bzip2::OneIOBzip2::get_reader(raw_reader)
-        }
-        #[cfg(feature="lz4")]
-        "lz4"| "lz" => {
-            lz4::OneIOLz4::get_reader(raw_reader)
-        }
+        #[cfg(feature = "gz")]
+        "gz" | "gzip" => gzip::OneIOGzip::get_reader(raw_reader),
+        #[cfg(feature = "bz")]
+        "bz2" | "bz" => bzip2::OneIOBzip2::get_reader(raw_reader),
+        #[cfg(feature = "lz4")]
+        "lz4" | "lz" => lz4::OneIOLz4::get_reader(raw_reader),
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
             Ok(Box::new(raw_reader))
@@ -73,15 +70,19 @@ pub fn get_remote_reader(path: &str, header: HashMap<String, String>) -> Result<
     }
 }
 
-#[cfg(feature="remote")]
-pub fn download(remote_path: &str, local_path: &str, header: Option<HashMap<String, String>>) -> Result<(), OneIoError> {
+#[cfg(feature = "remote")]
+pub fn download(
+    remote_path: &str,
+    local_path: &str,
+    header: Option<HashMap<String, String>>,
+) -> Result<(), OneIoError> {
     let headers: HeaderMap = match &header {
-        None => {HeaderMap::default()}
-        Some(header) => {
-            header.try_into().expect("invalid headers")
-        }
+        None => HeaderMap::default(),
+        Some(header) => header.try_into().expect("invalid headers"),
     };
-    let client = reqwest::blocking::Client::builder().default_headers(headers).build()?;
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .build()?;
     let mut response = client.execute(client.get(remote_path).build()?)?;
     // let raw_reader: Box<dyn Read> = Box::new(client.execute(client.get(path).build()?)?);
     let mut writer: Box<dyn Write> = get_writer_raw(local_path)?;
@@ -98,7 +99,7 @@ pub fn read_to_string(path: &str) -> Result<String, OneIoError> {
     Ok(content)
 }
 
-#[cfg(feature="json")]
+#[cfg(feature = "json")]
 /// Convenient function to directly read remote or local JSON content to a struct
 pub fn read_json_struct<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, OneIoError> {
     let reader = get_reader(path)?;
@@ -107,41 +108,33 @@ pub fn read_json_struct<T: serde::de::DeserializeOwned>(path: &str) -> Result<T,
 }
 
 /// convenient function to read a file and returns a line iterator.
-pub fn read_lines(path:&str) -> Result<Lines<BufReader<Box<dyn Read+Send>>>, OneIoError> {
+pub fn read_lines(path: &str) -> Result<Lines<BufReader<Box<dyn Read + Send>>>, OneIoError> {
     let reader = get_reader(path)?;
     let buf_reader = BufReader::new(reader);
     Ok(buf_reader.lines())
 }
 
 /// get a Box<dyn Read> reader
-pub fn get_reader(path: &str) -> Result<Box<dyn Read+Send>, OneIoError> {
-    #[cfg(feature="remote")]
+pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
+    #[cfg(feature = "remote")]
     let raw_reader: Box<dyn Read + Send> = match path.starts_with("http") {
         true => {
             let response = reqwest::blocking::get(path)?;
             Box::new(response)
         }
-        false => {
-            Box::new(std::fs::File::open(path)?)
-        }
+        false => Box::new(std::fs::File::open(path)?),
     };
-    #[cfg(not(feature="remote"))]
+    #[cfg(not(feature = "remote"))]
     let raw_reader: Box<dyn Read + Send> = Box::new(std::fs::File::open(path)?);
 
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
-        #[cfg(feature="gz")]
-        "gz" | "gzip" => {
-            gzip::OneIOGzip::get_reader(raw_reader)
-        }
-        #[cfg(feature="bz")]
-        "bz2" | "bz" => {
-            bzip2::OneIOBzip2::get_reader(raw_reader)
-        }
-        #[cfg(feature="lz4")]
-        "lz4"| "lz" => {
-            lz4::OneIOLz4::get_reader(raw_reader)
-        }
+        #[cfg(feature = "gz")]
+        "gz" | "gzip" => gzip::OneIOGzip::get_reader(raw_reader),
+        #[cfg(feature = "bz")]
+        "bz2" | "bz" => bzip2::OneIOBzip2::get_reader(raw_reader),
+        #[cfg(feature = "lz4")]
+        "lz4" | "lz" => lz4::OneIOLz4::get_reader(raw_reader),
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
             Ok(Box::new(raw_reader))
@@ -160,24 +153,33 @@ pub fn get_cache_reader(
     path: &str,
     cache_dir: &str,
     cache_file_name: Option<String>,
-    force_cache: bool
+    force_cache: bool,
 ) -> Result<Box<dyn Read + Send>, OneIoError> {
     let dir_path = std::path::Path::new(cache_dir);
     if !dir_path.is_dir() {
         match std::fs::create_dir_all(dir_path) {
             Ok(_) => {}
             Err(e) => {
-                return Err(OneIoError::CacheIoError(format!("cache directory creation failed: {}",e)))
+                return Err(OneIoError::CacheIoError(format!(
+                    "cache directory creation failed: {}",
+                    e
+                )))
             }
         }
     }
 
     let cache_file_path = match cache_file_name {
         None => {
-            let file_name = path.split('/').collect::<Vec<&str>>().into_iter().last().unwrap().to_string();
+            let file_name = path
+                .split('/')
+                .collect::<Vec<&str>>()
+                .into_iter()
+                .last()
+                .unwrap()
+                .to_string();
             format!("{}/{}", cache_dir, file_name)
         }
-        Some(p) => {p}
+        Some(p) => p,
     };
 
     // if cache file already exists
@@ -208,19 +210,11 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature = "gz")]
-        "gz" | "gzip" => {
-            gzip::OneIOGzip::get_writer(output_file)
-        }
+        "gz" | "gzip" => gzip::OneIOGzip::get_writer(output_file),
         #[cfg(feature = "bz")]
-        "bz2" | "bz" => {
-            bzip2::OneIOBzip2::get_writer(output_file)
-        }
+        "bz2" | "bz" => bzip2::OneIOBzip2::get_writer(output_file),
         #[cfg(feature = "lz4")]
-        "lz4" | "lz" => {
-            lz4::OneIOLz4::get_writer(output_file)
-        }
-        _ => {
-            Ok(Box::new(BufWriter::new(output_file)))
-        }
+        "lz4" | "lz" => lz4::OneIOLz4::get_writer(output_file),
+        _ => Ok(Box::new(BufWriter::new(output_file))),
     }
 }

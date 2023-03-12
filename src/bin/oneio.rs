@@ -1,7 +1,7 @@
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
 use clap::Parser;
 use std::io::Write;
+use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -46,13 +46,11 @@ fn main() {
                 // infer file path and download to current directory
                 if !path.starts_with("http") {
                     eprintln!("{} is not a remote file, skip downloading", path);
-                    return
+                    return;
                 }
                 path.split('/').last().unwrap().to_string()
             }
-            Some(p) => {
-                p.to_str().unwrap().to_string()
-            }
+            Some(p) => p.to_str().unwrap().to_string(),
         };
 
         match oneio::download(path, out_path.as_str(), None) {
@@ -64,34 +62,27 @@ fn main() {
             }
         }
 
-        return
+        return;
     }
 
-    let reader = Box::new(
-        BufReader::new(
-            match cli.cache_dir {
-                Some(dir) => {
-                    match oneio::get_cache_reader(path, dir.as_str(), cli.cache_file, cli.cache_force) {
-                        Ok(reader) => {reader}
-                        Err(e) => {
-                            eprintln!("Cannot open {}: {}", path, e);
-                            return
-                        }
-                    }
-                }
-                None => {
-                    match oneio::get_reader(path) {
-                        Ok(reader) => {reader}
-                        Err(e) => {
-                            eprintln!("Cannot open {}: {}", path, e);
-                            return
-                        }
-                    }
+    let reader = Box::new(BufReader::new(match cli.cache_dir {
+        Some(dir) => {
+            match oneio::get_cache_reader(path, dir.as_str(), cli.cache_file, cli.cache_force) {
+                Ok(reader) => reader,
+                Err(e) => {
+                    eprintln!("Cannot open {}: {}", path, e);
+                    return;
                 }
             }
-        )
-    );
-
+        }
+        None => match oneio::get_reader(path) {
+            Ok(reader) => reader,
+            Err(e) => {
+                eprintln!("Cannot open {}: {}", path, e);
+                return;
+            }
+        },
+    }));
 
     let mut stdout = std::io::stdout();
 
@@ -100,7 +91,7 @@ fn main() {
 
     for line in reader.lines() {
         let line = match line {
-            Ok(l) => {l}
+            Ok(l) => l,
             Err(e) => {
                 eprintln!("Cannot read line from {}: {}", path, e);
                 return;
