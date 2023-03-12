@@ -30,6 +30,8 @@ clap = {version= "4.1", features=["derive"], optional=true}
 serde = {version="1.0", optional=true }
 serde_json = {version="1.0", optional=true }
 
+thiserror = "1.0"
+
 [features]
 default = ["all"]
 all = ["lib_only", "bin"]

@@ -1,70 +1,28 @@
-use std::error::Error;
-use std::fmt::{Display, Formatter};
+use thiserror::Error;
 
-#[derive(Debug)]
-pub enum OneIoErrorKind {
+#[derive(Debug, Error)]
+pub enum OneIoError {
     #[cfg(feature="remote")]
-    RemoteIoError(reqwest::Error),
+    #[error("remote IO error: {0}")]
+    RemoteIoError(#[from] reqwest::Error),
     #[cfg(feature="json")]
-    JsonParsingError(serde_json::Error),
+    #[error("JSON object parsing error: {0}")]
+    JsonParsingError(#[from] serde_json::Error),
+    #[error("End-of-file error: {0}")]
     EofError(std::io::Error),
+    #[error("IO error: {0}")]
     IoError(std::io::Error),
+    #[error("Not supported error: {0}")]
     NotSupported(String),
+    #[error("Cache IO error: {0}")]
     CacheIoError(String),
-}
-
-#[derive(Debug)]
-pub struct OneIoError {
-    pub kind: OneIoErrorKind,
-}
-
-impl Display for OneIoError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let msg = match &self.kind {
-            #[cfg(feature="remote")]
-            OneIoErrorKind::RemoteIoError(e) => {e.to_string()}
-            #[cfg(feature="json")]
-            OneIoErrorKind::JsonParsingError(e) => {e.to_string()},
-            OneIoErrorKind::EofError(e) => {e.to_string()}
-            OneIoErrorKind::IoError(e) => {e.to_string()}
-            OneIoErrorKind::NotSupported(msg) => {msg.clone()}
-            OneIoErrorKind::CacheIoError(msg) => {msg.clone()}
-        };
-        write!(f, "error: {}", msg)
-    }
-}
-
-impl Error for OneIoError {
-
-}
-
-#[cfg(feature="remote")]
-impl From<reqwest::Error> for OneIoError {
-    fn from(error: reqwest::Error) -> Self {
-        OneIoError{
-            kind: OneIoErrorKind::RemoteIoError(error)
-        }
-    }
 }
 
 impl From<std::io::Error> for OneIoError {
     fn from(io_error: std::io::Error) -> Self {
-        OneIoError {
-            kind: match io_error.kind() {
-                std::io::ErrorKind::UnexpectedEof => { OneIoErrorKind::EofError(io_error)}
-                _ => OneIoErrorKind::IoError(io_error)
-            }
+        match io_error.kind(){
+            std::io::ErrorKind::UnexpectedEof => { OneIoError::EofError(io_error)}
+            _ => OneIoError::IoError(io_error)
         }
     }
 }
-
-
-#[cfg(feature="json")]
-impl From<serde_json::Error> for OneIoError {
-    fn from(error: serde_json::Error) -> Self {
-        OneIoError{
-            kind: OneIoErrorKind::JsonParsingError(error)
-        }
-    }
-}
-

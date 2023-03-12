@@ -74,7 +74,7 @@ fn main() {
                     match oneio::get_cache_reader(path, dir.as_str(), cli.cache_file, cli.cache_force) {
                         Ok(reader) => {reader}
                         Err(e) => {
-                            eprintln!("cannot open {}: {}", path, e);
+                            eprintln!("Cannot open {}: {}", path, e);
                             return
                         }
                     }
@@ -83,7 +83,7 @@ fn main() {
                     match oneio::get_reader(path) {
                         Ok(reader) => {reader}
                         Err(e) => {
-                            eprintln!("cannot open {}: {}", path, e);
+                            eprintln!("Cannot open {}: {}", path, e);
                             return
                         }
                     }
@@ -102,7 +102,7 @@ fn main() {
         let line = match line {
             Ok(l) => {l}
             Err(e) => {
-                eprintln!("cannot read line from {}: {}", path, e);
+                eprintln!("Cannot read line from {}: {}", path, e);
                 return;
             }
         };

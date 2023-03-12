@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 #[cfg(feature="remote")]
 use reqwest::header::HeaderMap;
-use crate::{OneIoError, OneIoErrorKind};
+use crate::OneIoError;
 
 pub trait OneIOCompression {
     fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError>;
@@ -167,7 +167,7 @@ pub fn get_cache_reader(
         match std::fs::create_dir_all(dir_path) {
             Ok(_) => {}
             Err(e) => {
-                return Err(OneIoError{ kind: OneIoErrorKind::CacheIoError(format!("cache directory creation failed: {}",e)) })
+                return Err(OneIoError::CacheIoError(format!("cache directory creation failed: {}",e)))
             }
         }
     }
