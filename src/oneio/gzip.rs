@@ -1,10 +1,10 @@
-use std::fs::File;
-use std::io::{BufWriter, Read, Write};
-use flate2::Compression;
-use flate2::read::GzDecoder;
-use flate2::write::GzEncoder;
 use crate::oneio::OneIOCompression;
 use crate::OneIoError;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use std::fs::File;
+use std::io::{BufWriter, Read, Write};
 
 pub(crate) struct OneIOGzip;
 
@@ -17,4 +17,3 @@ impl OneIOCompression for OneIOGzip {
         Ok(Box::new(GzEncoder::new(raw_writer, Compression::default())))
     }
 }
-

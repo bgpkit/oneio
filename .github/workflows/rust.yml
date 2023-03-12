@@ -22,3 +22,5 @@ jobs:
         run: cargo build --no-default-features
       - name: Run tests
         run: cargo test
+      - name: Run format check
+        run: cargo fmt --check
