@@ -168,19 +168,18 @@ pub fn get_cache_reader(
         }
     }
 
-    let cache_file_path = match cache_file_name {
-        None => {
-            let file_name = path
-                .split('/')
-                .collect::<Vec<&str>>()
-                .into_iter()
-                .last()
-                .unwrap()
-                .to_string();
-            format!("{}/{}", cache_dir, file_name)
-        }
+    let cache_file_name = match cache_file_name {
+        None => path
+            .split('/')
+            .collect::<Vec<&str>>()
+            .into_iter()
+            .last()
+            .unwrap()
+            .to_string(),
         Some(p) => p,
     };
+
+    let cache_file_path = format!("{}/{}", cache_dir, cache_file_name);
 
     // if cache file already exists
     if !force_cache && std::path::Path::new(cache_file_path.as_str()).exists() {
