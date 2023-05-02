@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## V0.9.0: error on 4XX, 5XX codes
+
+### Breaking change
+
+- [[#11](https://github.com/bgpkit/oneio/pull/11)]: The remote file openers will now return an error if the remote file returns a 4XX or 5XX code.
+
+## V0.8.1: `impl Send`, format, custom error
+
+### Revision
+- [[#10](https://github.com/bgpkit/oneio/pull/10)]: fix confusing `cache_file_name` vs `cache_file_path` issue
+
 ## V0.8.0: `impl Send`, format, custom error
 
 ### New
