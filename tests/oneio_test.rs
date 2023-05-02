@@ -147,3 +147,11 @@ fn test_read_json_struct() {
     assert_eq!(data.meta.float, 1.1);
     assert_eq!(data.meta.success, true);
 }
+
+#[test]
+fn test_read_404() {
+    let reader = oneio::get_reader("https://spaces.bgpkit.org/oneio/test_data_NOT_EXIST.json");
+    assert!(reader.is_err());
+    let reader = oneio::get_reader("https://spaces.bgpkit.org/oneio/test_data.json");
+    assert!(reader.is_ok());
+}
