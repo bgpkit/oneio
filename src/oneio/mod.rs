@@ -7,8 +7,6 @@ mod lz4;
 
 use crate::OneIoError;
 #[cfg(feature = "remote")]
-use reqwest::header::HeaderMap;
-#[cfg(feature = "remote")]
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
@@ -22,7 +20,7 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn Read>, OneIoError> {
     #[cfg(feature = "remote")]
     let raw_reader: Box<dyn Read> = match path.starts_with("http") {
         true => {
-            let response = reqwest::blocking::get(path)?;
+            let response = get_remote_reader_raw(path, HashMap::new())?;
             Box::new(response)
         }
         false => Box::new(std::fs::File::open(path)?),
@@ -30,6 +28,21 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn Read>, OneIoError> {
     #[cfg(not(feature = "remote"))]
     let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
     Ok(raw_reader)
+}
+
+#[cfg(feature = "remote")]
+fn get_remote_reader_raw(
+    path: &str,
+    header: HashMap<String, String>,
+) -> Result<reqwest::blocking::Response, OneIoError> {
+    let headers: reqwest::header::HeaderMap = (&header).try_into().expect("invalid headers");
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .build()?;
+    let res = client
+        .execute(client.get(path).build()?)?
+        .error_for_status()?;
+    Ok(res)
 }
 
 #[cfg(feature = "remote")]
@@ -50,11 +63,7 @@ pub fn get_remote_reader(
     path: &str,
     header: HashMap<String, String>,
 ) -> Result<Box<dyn Read + Send>, OneIoError> {
-    let headers: HeaderMap = (&header).try_into().expect("invalid headers");
-    let client = reqwest::blocking::Client::builder()
-        .default_headers(headers)
-        .build()?;
-    let raw_reader: Box<dyn Read + Send> = Box::new(client.execute(client.get(path).build()?)?);
+    let raw_reader: Box<dyn Read + Send> = Box::new(get_remote_reader_raw(path, header)?);
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature = "gz")]
@@ -76,15 +85,7 @@ pub fn download(
     local_path: &str,
     header: Option<HashMap<String, String>>,
 ) -> Result<(), OneIoError> {
-    let headers: HeaderMap = match &header {
-        None => HeaderMap::default(),
-        Some(header) => header.try_into().expect("invalid headers"),
-    };
-    let client = reqwest::blocking::Client::builder()
-        .default_headers(headers)
-        .build()?;
-    let mut response = client.execute(client.get(remote_path).build()?)?;
-    // let raw_reader: Box<dyn Read> = Box::new(client.execute(client.get(path).build()?)?);
+    let mut response = get_remote_reader_raw(remote_path, header.unwrap_or_default())?;
     let mut writer: Box<dyn Write> = get_writer_raw(local_path)?;
 
     response.copy_to(&mut writer)?;
@@ -114,12 +115,12 @@ pub fn read_lines(path: &str) -> Result<Lines<BufReader<Box<dyn Read + Send>>>, 
     Ok(buf_reader.lines())
 }
 
-/// get a Box<dyn Read> reader
+/// get a generic Box<dyn Read> reader
 pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     #[cfg(feature = "remote")]
     let raw_reader: Box<dyn Read + Send> = match path.starts_with("http") {
         true => {
-            let response = reqwest::blocking::get(path)?;
+            let response = get_remote_reader_raw(path, HashMap::new())?;
             Box::new(response)
         }
         false => Box::new(std::fs::File::open(path)?),
