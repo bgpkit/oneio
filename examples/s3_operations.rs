@@ -30,4 +30,8 @@ fn main() {
     // error if file does not exist
     let res = s3_stats("oneio-test", "test/README___NON_EXISTS.md");
     assert!(res.is_err());
+
+    // list S3 files
+    let res = s3_list("oneio-test", "test/", Some("/")).unwrap();
+    dbg!(res);
 }
