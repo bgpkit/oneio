@@ -30,7 +30,6 @@ clap = {version= "4.1", features=["derive"], optional=true}
 serde = {version="1.0", optional=true }
 serde_json = {version="1.0", optional=true }
 rust-s3 = {version="0.33", optional=true, default-features=false, features=["sync", "sync-native-tls"]}
-bytes = {versio="1.4.0", optional=true}
 dotenvy = {version="0.15.7", optional=true}
 
 thiserror = "1.0"
@@ -39,7 +38,7 @@ thiserror = "1.0"
 default = ["all"]
 all = ["lib_only", "bin", "s3"]
 lib_only = ["remote", "gz", "bz", "lz", "json"]
-s3= ["rust-s3", "bytes", "dotenvy"]
+s3= ["rust-s3", "dotenvy"]
 
 remote=["reqwest"]
 gz = ["flate2"]
