@@ -20,12 +20,13 @@ oneio = {version = "0.9.0", features = ["remote", "gz"]}
 ```
 
 Supported feature flags:
-- `all` (**default**): all flags (`["gz", "bz", "lz", "remote", "json"]`)
+- `all` (**default**): all flags (`["gz", "bz", "lz", "remote", "json", "s3"]`)
 - `remote`: allow reading from remote files
 - `gz`: support `gzip` files
 - `bz`: support `bzip2` files
 - `lz`: support `lz4` files
 - `json`: allow reading JSON content into structs directly
+- `s3`: allow reading from AWS S3 compatible buckets
 
 ## Use `oneio` commandline tool
 
@@ -133,6 +134,7 @@ fn main() {
 
 ### Example
 
+#### Common IO operations
 ```rust
 fn main() {
     let to_read_file = "https://spaces.bgpkit.org/oneio/test_data.txt.gz";
@@ -157,7 +159,8 @@ fn main() {
 }
 ```
 
-Read remote content with custom headers
+#### Read remote content with custom headers
+
 ```rust
 use std::collections::HashMap;
 fn main() {
@@ -171,7 +174,8 @@ fn main() {
 }
 ```
 
-Download remote file to local directory
+#### Download remote file to local directory
+
 ```rust
 fn main() {
     oneio::download(
@@ -179,5 +183,35 @@ fn main() {
         "updates.gz",
         None
     ).unwrap();
+}
+```
+
+#### S3-related operations (needs `s3` feature flag)
+```rust
+fn main() {
+    // upload to S3
+    s3_upload("oneio-test", "test/README.md", "README.md").unwrap();
+
+    // read directly from S3
+    let mut content = String::new();
+    s3_reader("oneio-test", "test/README.md")
+        .unwrap()
+        .read_to_string(&mut content)
+        .unwrap();
+    println!("{}", content);
+
+    // download from S3
+    s3_download("oneio-test", "test/README.md", "test/README-2.md").unwrap();
+
+    // get S3 file stats
+    let res = s3_stats("oneio-test", "test/README.md").unwrap();
+    dbg!(res);
+
+    // error if file does not exist
+    let res = s3_stats("oneio-test", "test/README___NON_EXISTS.md");
+    assert!(res.is_err());
+    
+    // list S3 files
+    let res = s3_list("oneio-test", "test/", Some("/")).unwrap();
 }
 ```

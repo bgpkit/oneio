@@ -16,6 +16,19 @@ pub enum OneIoError {
     NotSupported(String),
     #[error("Cache IO error: {0}")]
     CacheIoError(String),
+
+    #[cfg(feature = "s3")]
+    #[error("S3 IO error: {0}")]
+    S3IoError(#[from] s3::error::S3Error),
+    #[cfg(feature = "s3")]
+    #[error("S3 credential error: {0}")]
+    S3CredentialError(#[from] s3::creds::error::CredentialsError),
+    #[cfg(feature = "s3")]
+    #[error("S3 region error: {0}")]
+    S3RegionError(#[from] s3::region::error::RegionError),
+    #[cfg(feature = "s3")]
+    #[error("S3 download error: code {0}")]
+    S3DownloadError(u16),
 }
 
 impl From<std::io::Error> for OneIoError {
