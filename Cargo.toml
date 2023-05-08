@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.9.0"
+version = "0.10.0"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -11,7 +11,7 @@ description = """
 OneIO is a Rust library that provides unified simple IO interface for
 reading and writing to and from data files from different sources and compressions.
 """
-keywords = ["io", "util"]
+keywords = ["io", "util", "s3"]
 
 [[bin]]
 name="oneio"
