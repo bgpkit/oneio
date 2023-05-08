@@ -8,6 +8,7 @@
 use crate::oneio::{get_reader_raw, get_writer_raw};
 use crate::OneIoError;
 use s3::creds::Credentials;
+use s3::serde_types::{HeadObjectResult, ListBucketResult};
 use s3::{Bucket, Region};
 use std::io::{Cursor, Read};
 
@@ -52,4 +53,29 @@ pub fn s3_download(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), O
         200..=299 => Ok(()),
         _ => Err(OneIoError::S3DownloadError(res)),
     }
+}
+
+/// Get S3 object head.
+pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError> {
+    let bucket = s3_bucket(bucket)?;
+    let (head_object, code): (HeadObjectResult, u16) = bucket.head_object(path)?;
+    match code {
+        200..=299 => Ok(head_object),
+        _ => Err(OneIoError::S3DownloadError(code)),
+    }
+}
+
+pub fn s3_list(
+    bucket: &str,
+    prefix: &str,
+    delimiter: Option<&str>,
+) -> Result<Vec<String>, OneIoError> {
+    let bucket = s3_bucket(bucket)?;
+    let mut list: Vec<ListBucketResult> =
+        bucket.list(prefix.to_string(), delimiter.map(|x| x.to_string()))?;
+    let mut result = vec![];
+    for item in list.iter_mut() {
+        result.extend(item.contents.iter().map(|x| x.key.clone()));
+    }
+    Ok(result)
 }

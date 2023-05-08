@@ -143,6 +143,10 @@ pub use crate::oneio::s3::s3_bucket;
 #[cfg(feature = "s3")]
 pub use crate::oneio::s3::s3_download;
 #[cfg(feature = "s3")]
+pub use crate::oneio::s3::s3_list;
+#[cfg(feature = "s3")]
 pub use crate::oneio::s3::s3_reader;
+#[cfg(feature = "s3")]
+pub use crate::oneio::s3::s3_stats;
 #[cfg(feature = "s3")]
 pub use crate::oneio::s3::s3_upload;
