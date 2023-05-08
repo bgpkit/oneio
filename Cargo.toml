@@ -16,7 +16,7 @@ keywords = ["io", "util"]
 [[bin]]
 name="oneio"
 path="src/bin/oneio.rs"
-required-features=["bin"]
+required-features=["all"]
 
 [dependencies]
 # remote
@@ -29,13 +29,17 @@ lz4 = {version = "1.24", optional = true }
 clap = {version= "4.1", features=["derive"], optional=true}
 serde = {version="1.0", optional=true }
 serde_json = {version="1.0", optional=true }
+rust-s3 = {version="0.33", optional=true, default-features=false, features=["sync", "sync-native-tls"]}
+bytes = {versio="1.4.0", optional=true}
+dotenvy = {version="0.15.7", optional=true}
 
 thiserror = "1.0"
 
 [features]
 default = ["all"]
-all = ["lib_only", "bin"]
+all = ["lib_only", "bin", "s3"]
 lib_only = ["remote", "gz", "bz", "lz", "json"]
+s3= ["rust-s3", "bytes", "dotenvy"]
 
 remote=["reqwest"]
 gz = ["flate2"]

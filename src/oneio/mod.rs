@@ -4,12 +4,15 @@ mod bzip2;
 mod gzip;
 #[cfg(feature = "lz")]
 mod lz4;
+#[cfg(feature = "s3")]
+pub mod s3;
 
 use crate::OneIoError;
 #[cfg(feature = "remote")]
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
+use std::path::Path;
 
 pub trait OneIOCompression {
     fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError>;
@@ -86,7 +89,7 @@ pub fn download(
     header: Option<HashMap<String, String>>,
 ) -> Result<(), OneIoError> {
     let mut response = get_remote_reader_raw(remote_path, header.unwrap_or_default())?;
-    let mut writer: Box<dyn Write> = get_writer_raw(local_path)?;
+    let mut writer = get_writer_raw(local_path)?;
 
     response.copy_to(&mut writer)?;
     Ok(())
@@ -199,9 +202,13 @@ pub fn get_cache_reader(
     get_reader(cache_file_path.as_str())
 }
 
-fn get_writer_raw(path: &str) -> Result<Box<dyn Write>, OneIoError> {
+fn get_writer_raw(path: &str) -> Result<BufWriter<File>, OneIoError> {
+    let path = Path::new(path);
+    if let Some(prefix) = path.parent() {
+        std::fs::create_dir_all(prefix)?;
+    }
     let output_file = BufWriter::new(File::create(path)?);
-    Ok(Box::new(BufWriter::new(output_file)))
+    Ok(output_file)
 }
 
 pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {

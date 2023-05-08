@@ -138,3 +138,11 @@ pub use crate::oneio::get_writer;
 pub use crate::oneio::read_json_struct;
 pub use crate::oneio::read_lines;
 pub use crate::oneio::read_to_string;
+#[cfg(feature = "s3")]
+pub use crate::oneio::s3::s3_bucket;
+#[cfg(feature = "s3")]
+pub use crate::oneio::s3::s3_download;
+#[cfg(feature = "s3")]
+pub use crate::oneio::s3::s3_reader;
+#[cfg(feature = "s3")]
+pub use crate::oneio::s3::s3_upload;

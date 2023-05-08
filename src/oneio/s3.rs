@@ -1,0 +1,55 @@
+//! S3 related functions.
+//!
+//! The following environment variables are needed (e.g. in .env):
+//! - AWS_ACCESS_KEY_ID
+//! - AWS_SECRET_ACCESS_KEY
+//! - AWS_REGION (e.g. "us-east-1") (use "auto" for Cloudflare R2)
+//! - AWS_ENDPOINT
+use crate::oneio::{get_reader_raw, get_writer_raw};
+use crate::OneIoError;
+use s3::creds::Credentials;
+use s3::{Bucket, Region};
+use std::io::{Cursor, Read};
+
+/// Get a S3 bucket object from the given bucket name.
+pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
+    dotenvy::dotenv().unwrap();
+    let bucket = Bucket::new(
+        bucket,
+        Region::from_default_env()?,
+        Credentials::from_env()?,
+    )?;
+    Ok(bucket)
+}
+
+/// Get a reader for a S3 object.
+///
+/// **NOTE**: The content is read into memory first before returning the reader. Use with caution
+/// for large files.
+pub fn s3_reader(bucket: &str, path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
+    let bucket = s3_bucket(bucket)?;
+    let object = bucket.get_object(path)?;
+    let buf: Vec<u8> = object.to_vec();
+    Ok(Box::new(Cursor::new(buf)))
+}
+
+/// Upload a file to S3.
+pub fn s3_upload(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), OneIoError> {
+    let bucket = s3_bucket(bucket)?;
+    let mut reader = get_reader_raw(file_path)?;
+    let mut bytes: Vec<u8> = vec![];
+    reader.read_to_end(&mut bytes)?;
+    bucket.put_object(s3_path, bytes.as_slice())?;
+    Ok(())
+}
+
+/// Download file from S3 bucket.
+pub fn s3_download(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), OneIoError> {
+    let bucket = s3_bucket(bucket)?;
+    let mut output_file = get_writer_raw(file_path)?;
+    let res: u16 = bucket.get_object_to_writer(s3_path, &mut output_file)?;
+    match res {
+        200..=299 => Ok(()),
+        _ => Err(OneIoError::S3DownloadError(res)),
+    }
+}
