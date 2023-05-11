@@ -65,6 +65,20 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
     }
 }
 
+/// Check if an S3 object exists.
+pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
+    if let Err(OneIoError::S3DownloadError(code)) = s3_stats(bucket, path) {
+        if code == 404 {
+            return Ok(false);
+        } else {
+            return Err(OneIoError::S3DownloadError(code));
+        }
+    } else {
+        return Ok(true);
+    }
+}
+
+/// List S3 objects.
 pub fn s3_list(
     bucket: &str,
     prefix: &str,

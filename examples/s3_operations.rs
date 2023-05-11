@@ -1,4 +1,4 @@
-use oneio::{s3_download, s3_list, s3_reader, s3_stats, s3_upload};
+use oneio::{s3_download, s3_exists, s3_list, s3_reader, s3_stats, s3_upload};
 use std::io::Read;
 
 /// This example shows how to upload a file to S3 and read it back.
@@ -30,6 +30,12 @@ fn main() {
     // error if file does not exist
     let res = s3_stats("oneio-test", "test/README___NON_EXISTS.md");
     assert!(res.is_err());
+
+    assert_eq!(
+        false,
+        s3_exists("oneio-test", "test/README___NON_EXISTS.md").unwrap()
+    );
+    assert_eq!(true, s3_exists("oneio-test", "test/README.md").unwrap());
 
     // list S3 files
     let res = s3_list("oneio-test", "test/", Some("/")).unwrap();
