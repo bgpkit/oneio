@@ -14,7 +14,7 @@ use std::io::{Cursor, Read};
 
 /// Get a S3 bucket object from the given bucket name.
 pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
-    dotenvy::dotenv().unwrap();
+    dotenvy::dotenv().ok();
     let bucket = Bucket::new(
         bucket,
         Region::from_default_env()?,
