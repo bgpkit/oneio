@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## V0.10.1: Bug fix, S3 object exists
+
+### New 
+
+- [[#15](https://github.com/bgpkit/oneio/pull/15)]: fixes #14 where `.env` missing would trigger panic
+- [[#16](https://github.com/bgpkit/oneio/pull/16)]: add `s3_exists` to check if an object exists in S3
+
 ## V0.10.0: S3 operations
 
 ### New
