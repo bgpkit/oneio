@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.10.1"
+version = "0.11.0"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -22,29 +22,35 @@ required-features=["all"]
 # remote
 reqwest = {version="0.11", features = ["blocking"], optional=true }
 
-# oneio
+# compression
 flate2 = {version = "1", optional=true }
 bzip2 = {version = "0.4", optional = true }
 lz4 = {version = "1.24", optional = true }
+
+# cli
 clap = {version= "4.1", features=["derive"], optional=true}
+
+# json
 serde = {version="1.0", optional=true }
 serde_json = {version="1.0", optional=true }
+
+# s3
 rust-s3 = {version="0.33", optional=true, default-features=false, features=["sync", "sync-native-tls"]}
 dotenvy = {version="0.15.7", optional=true}
 
 thiserror = "1.0"
 
 [features]
-default = ["all"]
-all = ["lib_only", "bin", "s3"]
-lib_only = ["remote", "gz", "bz", "lz", "json"]
+default = ["lib"]
+all = ["lib", "cli", "s3"]
+lib = ["remote", "gz", "bz", "lz", "json"]
 s3= ["rust-s3", "dotenvy"]
 
 remote=["reqwest"]
 gz = ["flate2"]
 bz = ["bzip2"]
 lz = ["lz4"]
-bin = ["clap"]
+cli = ["clap"]
 json = ["serde", "serde_json"]
 
 [dev-dependencies]
