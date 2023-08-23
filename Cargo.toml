@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.11.0"
+version = "0.12.0"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -11,7 +11,7 @@ description = """
 OneIO is a Rust library that provides unified simple IO interface for
 reading and writing to and from data files from different sources and compressions.
 """
-keywords = ["io", "util", "s3"]
+keywords = ["io", "util", "s3", "ftp"]
 
 [[bin]]
 name="oneio"
@@ -29,6 +29,7 @@ lz4 = {version = "1.24", optional = true }
 
 # cli
 clap = {version= "4.1", features=["derive"], optional=true}
+tracing = {version="0.1.37", optional=true}
 
 # json
 serde = {version="1.0", optional=true }
@@ -38,6 +39,9 @@ serde_json = {version="1.0", optional=true }
 rust-s3 = {version="0.33", optional=true, default-features=false, features=["sync", "sync-native-tls"]}
 dotenvy = {version="0.15.7", optional=true}
 
+# ftp
+suppaftp = { version = "^5.1.0", features = ["native-tls"], optional = true }
+
 thiserror = "1.0"
 
 [features]
@@ -46,11 +50,11 @@ all = ["lib", "cli", "s3"]
 lib = ["remote", "gz", "bz", "lz", "json"]
 s3= ["rust-s3", "dotenvy"]
 
-remote=["reqwest"]
+remote=["reqwest", "suppaftp"]
 gz = ["flate2"]
 bz = ["bzip2"]
 lz = ["lz4"]
-cli = ["clap"]
+cli = ["clap", "tracing"]
 json = ["serde", "serde_json"]
 
 [dev-dependencies]

@@ -5,6 +5,9 @@ pub enum OneIoError {
     #[cfg(feature = "remote")]
     #[error("remote IO error: {0}")]
     RemoteIoError(#[from] reqwest::Error),
+    #[cfg(feature = "remote")]
+    #[error("FTP error: {0}")]
+    FptError(#[from] suppaftp::FtpError),
     #[cfg(feature = "json")]
     #[error("JSON object parsing error: {0}")]
     JsonParsingError(#[from] serde_json::Error),
