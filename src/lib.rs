@@ -122,6 +122,11 @@
 //! std::fs::remove_file(to_write_file).unwrap();
 //! ```
 
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/bgpkit/assets/main/logos/icon-transparent.png",
+    html_favicon_url = "https://raw.githubusercontent.com/bgpkit/assets/main/logos/favicon.ico"
+)]
+
 mod error;
 mod oneio;
 

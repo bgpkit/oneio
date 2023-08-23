@@ -21,12 +21,14 @@ pub trait OneIOCompression {
 
 fn get_reader_raw(path: &str) -> Result<Box<dyn Read>, OneIoError> {
     #[cfg(feature = "remote")]
-    let raw_reader: Box<dyn Read> = match path.starts_with("http") {
-        true => {
-            let response = get_remote_reader_raw(path, HashMap::new())?;
-            Box::new(response)
-        }
-        false => Box::new(std::fs::File::open(path)?),
+    let raw_reader: Box<dyn Read> = if path.starts_with("http") {
+        let response = get_remote_http_raw(path, HashMap::new())?;
+        Box::new(response)
+    } else if path.starts_with("ftp") {
+        let response = get_remote_ftp_raw(path)?;
+        Box::new(response)
+    } else {
+        Box::new(std::fs::File::open(path)?)
     };
     #[cfg(not(feature = "remote"))]
     let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
@@ -34,7 +36,7 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn Read>, OneIoError> {
 }
 
 #[cfg(feature = "remote")]
-fn get_remote_reader_raw(
+fn get_remote_http_raw(
     path: &str,
     header: HashMap<String, String>,
 ) -> Result<reqwest::blocking::Response, OneIoError> {
@@ -46,6 +48,25 @@ fn get_remote_reader_raw(
         .execute(client.get(path).build()?)?
         .error_for_status()?;
     Ok(res)
+}
+
+#[cfg(feature = "remote")]
+fn get_remote_ftp_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
+    if !path.starts_with("ftp://") {
+        return Err(OneIoError::NotSupported(path.to_string()));
+    }
+
+    let parts = path.split('/').collect::<Vec<&str>>();
+    let socket = match parts[2].contains(':') {
+        true => parts[2].to_string(),
+        false => format!("{}:21", parts[2]),
+    };
+    let path = parts[3..].join("/");
+
+    let mut ftp_stream = suppaftp::FtpStream::connect(socket)?;
+    ftp_stream.login("anonymous", "oneio").unwrap();
+    let reader = Box::new(ftp_stream.retr_as_stream(path.as_str())?);
+    Ok(reader)
 }
 
 #[cfg(feature = "remote")]
@@ -66,7 +87,7 @@ pub fn get_remote_reader(
     path: &str,
     header: HashMap<String, String>,
 ) -> Result<Box<dyn Read + Send>, OneIoError> {
-    let raw_reader: Box<dyn Read + Send> = Box::new(get_remote_reader_raw(path, header)?);
+    let raw_reader: Box<dyn Read + Send> = Box::new(get_remote_http_raw(path, header)?);
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature = "gz")]
@@ -88,7 +109,7 @@ pub fn download(
     local_path: &str,
     header: Option<HashMap<String, String>>,
 ) -> Result<(), OneIoError> {
-    let mut response = get_remote_reader_raw(remote_path, header.unwrap_or_default())?;
+    let mut response = get_remote_http_raw(remote_path, header.unwrap_or_default())?;
     let mut writer = get_writer_raw(local_path)?;
 
     response.copy_to(&mut writer)?;
@@ -121,12 +142,14 @@ pub fn read_lines(path: &str) -> Result<Lines<BufReader<Box<dyn Read + Send>>>, 
 /// get a generic Box<dyn Read> reader
 pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     #[cfg(feature = "remote")]
-    let raw_reader: Box<dyn Read + Send> = match path.starts_with("http") {
-        true => {
-            let response = get_remote_reader_raw(path, HashMap::new())?;
-            Box::new(response)
-        }
-        false => Box::new(std::fs::File::open(path)?),
+    let raw_reader: Box<dyn Read + Send> = if path.starts_with("http") {
+        let response = get_remote_http_raw(path, HashMap::new())?;
+        Box::new(response)
+    } else if path.starts_with("ftp") {
+        let response = get_remote_ftp_raw(path)?;
+        Box::new(response)
+    } else {
+        Box::new(std::fs::File::open(path)?)
     };
     #[cfg(not(feature = "remote"))]
     let raw_reader: Box<dyn Read + Send> = Box::new(std::fs::File::open(path)?);

@@ -2,6 +2,7 @@ use clap::Parser;
 use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use tracing::error;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -93,8 +94,8 @@ fn main() {
         let line = match line {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("Cannot read line from {}: {}", path, e);
-                return;
+                error!("Cannot read line from {}: {}", path, e);
+                continue;
             }
         };
         if !cli.stats {
