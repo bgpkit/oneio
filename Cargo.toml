@@ -20,7 +20,7 @@ required-features=["all"]
 
 [dependencies]
 # remote
-reqwest = {version="0.11", features = ["blocking"], optional=true }
+reqwest = {version="0.11", default-features=false, features = ["blocking"], optional=true }
 
 # compression
 flate2 = {version = "1", optional=true }
@@ -36,19 +36,21 @@ serde = {version="1.0", optional=true }
 serde_json = {version="1.0", optional=true }
 
 # s3
-rust-s3 = {version="0.33", optional=true, default-features=false, features=["sync", "sync-native-tls"]}
+rust-s3 = {version="0.33", optional=true, default-features=false, features=["sync"]}
 dotenvy = {version="0.15.7", optional=true}
 
 # ftp
-suppaftp = { version = "^5.1.0", features = ["native-tls"], optional = true }
+suppaftp = { version = "^5.1.0", optional = true }
 
 thiserror = "1.0"
 
 [features]
 default = ["lib"]
 all = ["lib", "cli", "s3"]
-lib = ["remote", "gz", "bz", "lz", "json"]
-s3= ["rust-s3", "dotenvy"]
+lib = ["remote", "native-tls", "gz", "bz", "lz", "json"]
+s3= ["rust-s3", "native-tls", "dotenvy"]
+native-tls = ["reqwest?/default-tls", "suppaftp?/native-tls", "rust-s3?/sync-native-tls"]
+rustls = ["reqwest?/rustls-tls", "suppaftp?/rustls", "rust-s3?/sync-rustls-tls"]
 
 remote=["reqwest", "suppaftp"]
 gz = ["flate2"]
