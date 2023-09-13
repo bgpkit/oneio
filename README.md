@@ -23,7 +23,7 @@ Supported feature flags:
 - `lib` (*default*): `["gz", "bz", "lz", "remote", "json"]`
 - `all`: all flags (`["gz", "bz", "lz", "remote", "json", "s3"]`
 - `remote`: allow reading from remote files, including http(s) and ftp
-- `remote-rustls`: use `rustls` instead of `native-tls` for remote files via https
+- `rustls`: use `rustls` instead of `native-tls` for remote files via https or S3, if either are enabled
 - `gz`: support `gzip` files
 - `bz`: support `bzip2` files
 - `lz`: support `lz4` files
@@ -67,7 +67,7 @@ oneio https://bgpkit.com
 Here is another example of using `oneio` to read an remote compressed JSON file,
 pipe it to `jq` and count the number of JSON objects in the array.
 ```bash
-$ oneio https://data.bgpkit.com/peer-stats/as2rel-latest.json.bz2 | jq '.|length'  
+$ oneio https://data.bgpkit.com/peer-stats/as2rel-latest.json.bz2 | jq '.|length'
 802861
 ```
 
@@ -76,7 +76,7 @@ You can also directly download a file with the `--download` (or `-d`) flag.
 $ oneio -d http://archive.routeviews.org/route-views.amsix/bgpdata/2022.11/RIBS/rib.20221107.0400.bz2
 file successfully downloaded to rib.20221107.0400.bz2
 
-$ ls -lh rib.20221107.0400.bz2 
+$ ls -lh rib.20221107.0400.bz2
 -rw-r--r--  1 mingwei  staff   122M Nov  7 16:17 rib.20221107.0400.bz2
 
 $ monocle parse rib.20221107.0400.bz2 |head -n5
@@ -212,7 +212,7 @@ fn main() {
     // error if file does not exist
     let res = s3_stats("oneio-test", "test/README___NON_EXISTS.md");
     assert!(res.is_err());
-    
+
     // list S3 files
     let res = s3_list("oneio-test", "test/", Some("/")).unwrap();
 

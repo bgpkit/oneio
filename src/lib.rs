@@ -16,6 +16,7 @@
 //! - `all` (default): all flags (`["gz", "bz", "lz", "remote", "json"]`)
 //! - `remote`: allow reading from remote files, including http(s) and ftp
 //! - `remote-rustls`: use `rustls` instead of `native-tls` for remote files via https
+//! - `rustls`: use `rustls` instead of `native-tls` for remote files via https or S3, if either are enabled
 //! - `gz`: support `gzip` files
 //! - `bz`: support `bzip2` files
 //! - `lz`: support `lz4` files
