@@ -11,12 +11,12 @@ OneIO is a Rust library that provides unified simple IO interface for reading an
 
 Enable all compression algorithms, and handle remote files (default)
 ```toml
-oneio = "0.12"
+oneio = "0.13"
 ```
 
 Select from supported feature flags
 ```toml
-oneio = {version = "0.12", default-features=false, features = ["remote", "gz"]}
+oneio = {version = "0.13", default-features=false, features = ["remote", "gz"]}
 ```
 
 Supported feature flags:
