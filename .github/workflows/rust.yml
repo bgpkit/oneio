@@ -16,11 +16,24 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-      - name: Build
+
+      - name: Build default
         run: cargo build
+
       - name: Build no-default
         run: cargo build --no-default-features
-      - name: Run tests
-        run: cargo test --all-features
+
+      - name: Build lib with native-tls
+        run: cargo build --features lib,native-tls
+
+      - name: Build lib with rustls
+        run: cargo build --features lib,rustls
+
+      - name: Build lib with all features
+        run: cargo build --all-features
+
+      - name: Run test for lib feature
+        run: cargo test --features lib --test oneio_test
+
       - name: Run format check
         run: cargo fmt --check
