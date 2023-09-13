@@ -20,7 +20,7 @@ required-features=["all"]
 
 [dependencies]
 # remote
-reqwest = {version="0.11", features = ["blocking"], optional=true }
+reqwest = {version="0.11", default-features=false, features = ["blocking"], optional=true }
 
 # compression
 flate2 = {version = "1", optional=true }
@@ -50,7 +50,8 @@ all = ["lib", "cli", "s3"]
 lib = ["remote", "gz", "bz", "lz", "json"]
 s3= ["rust-s3", "dotenvy"]
 
-remote=["reqwest", "suppaftp"]
+remote=["reqwest/default-tls", "suppaftp"]
+rustls = ["reqwest?/rustls-tls"]
 gz = ["flate2"]
 bz = ["bzip2"]
 lz = ["lz4"]

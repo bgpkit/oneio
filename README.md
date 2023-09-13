@@ -23,6 +23,7 @@ Supported feature flags:
 - `lib` (*default*): `["gz", "bz", "lz", "remote", "json"]`
 - `all`: all flags (`["gz", "bz", "lz", "remote", "json", "s3"]`
 - `remote`: allow reading from remote files, including http(s) and ftp
+- `rustls`: use `rustls` instead of `native-tls` for remote files via https
 - `gz`: support `gzip` files
 - `bz`: support `bzip2` files
 - `lz`: support `lz4` files
