@@ -50,7 +50,7 @@ all = ["lib", "cli", "s3"]
 lib = ["remote", "gz", "bz", "lz", "json"]
 s3= ["rust-s3", "dotenvy"]
 
-remote=["reqwest/default-tls", "suppaftp,native-tls"]
+remote=["reqwest/default-tls", "suppaftp/native-tls"]
 remote-rustls = ["reqwest/rustls-tls", "suppaftp/rustls"]
 gz = ["flate2"]
 bz = ["bzip2"]
