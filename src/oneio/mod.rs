@@ -110,10 +110,18 @@ pub fn download(
     local_path: &str,
     header: Option<HashMap<String, String>>,
 ) -> Result<(), OneIoError> {
-    let mut response = get_remote_http_raw(remote_path, header.unwrap_or_default())?;
     let mut writer = get_writer_raw(local_path)?;
 
-    response.copy_to(&mut writer)?;
+    if remote_path.starts_with("http") {
+        let mut response = get_remote_http_raw(remote_path, header.unwrap_or_default())?;
+        response.copy_to(&mut writer)?;
+    } else if remote_path.starts_with("ftp") {
+        let mut reader = get_remote_ftp_raw(remote_path)?;
+        std::io::copy(&mut reader, &mut writer)?;
+    } else {
+        return Err(OneIoError::NotSupported(remote_path.to_string()));
+    };
+
     Ok(())
 }
 
