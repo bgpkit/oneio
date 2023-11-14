@@ -45,7 +45,7 @@ fn main() {
         let out_path = match outfile {
             None => {
                 // infer file path and download to current directory
-                if !path.starts_with("http") {
+                if !path.starts_with("http") && !path.starts_with("ftp") {
                     eprintln!("{} is not a remote file, skip downloading", path);
                     return;
                 }
