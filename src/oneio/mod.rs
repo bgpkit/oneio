@@ -65,6 +65,7 @@ fn get_remote_ftp_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
 
     let mut ftp_stream = suppaftp::FtpStream::connect(socket)?;
     ftp_stream.login("anonymous", "oneio").unwrap();
+    ftp_stream.transfer_type(suppaftp::types::FileType::Binary)?;
     let reader = Box::new(ftp_stream.retr_as_stream(path.as_str())?);
     Ok(reader)
 }
