@@ -1,9 +1,9 @@
 use crate::oneio::OneIOCompression;
 use crate::OneIoError;
-use xz2::read::XzDecoder;
-use xz2::write::XzEncoder;
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
+use xz2::read::XzDecoder;
+use xz2::write::XzEncoder;
 
 pub(crate) struct OneIOXz;
 
