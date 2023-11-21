@@ -26,6 +26,7 @@ reqwest = {version="0.11", default-features=false, features = ["blocking"], opti
 flate2 = {version = "1", optional=true }
 bzip2 = {version = "0.4.4", optional = true }
 lz4 = {version = "1.24", optional = true }
+xz2 = {version = "0.1", optional = true }
 
 # cli
 clap = {version= "4.1", features=["derive"], optional=true}
@@ -48,18 +49,20 @@ thiserror = "1.0"
 default = ["lib"]
 all = ["lib", "cli", "s3"]
 lib = ["lib-native-tls"]
-lib-native-tls = ["remote", "native-tls", "gz", "bz", "lz", "json"]
-lib-rustls = ["remote", "rustls", "gz", "bz", "lz", "json"]
+lib-native-tls = ["remote", "native-tls", "compressions", "json"]
+lib-rustls = ["remote", "rustls", "compressions", "json"]
 
 # optional flags to select native-tls or rust-tls
 native-tls = ["reqwest?/default-tls", "suppaftp?/native-tls", "rust-s3?/sync-native-tls"]
 rustls = ["reqwest?/rustls-tls", "suppaftp?/rustls", "rust-s3?/sync-rustls-tls"]
 
 remote=["reqwest", "suppaftp"]
+compressions = ["gz", "bz", "lz", "xz"]
 gz = ["flate2"]
 bz = ["bzip2"]
 lz = ["lz4"]
-cli = ["clap", "tracing"]
+xz = ["xz2"]
+cli = ["clap", "tracing", "s3"]
 json = ["serde", "serde_json"]
 s3= ["rust-s3", "native-tls", "dotenvy"]
 

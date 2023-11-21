@@ -6,6 +6,8 @@ mod gzip;
 mod lz4;
 #[cfg(feature = "s3")]
 pub mod s3;
+#[cfg(feature = "xz")]
+mod xz;
 
 use crate::OneIoError;
 #[cfg(feature = "remote")]
@@ -97,6 +99,8 @@ pub fn get_remote_reader(
         "bz2" | "bz" => bzip2::OneIOBzip2::get_reader(raw_reader),
         #[cfg(feature = "lz4")]
         "lz4" | "lz" => lz4::OneIOLz4::get_reader(raw_reader),
+        #[cfg(feature = "xz")]
+        "xz" | "xz2" | "lzma" => xz::OneIOXz::get_reader(raw_reader),
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
             Ok(Box::new(raw_reader))
@@ -171,6 +175,8 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
         "bz2" | "bz" => bzip2::OneIOBzip2::get_reader(raw_reader),
         #[cfg(feature = "lz4")]
         "lz4" | "lz" => lz4::OneIOLz4::get_reader(raw_reader),
+        #[cfg(feature = "lz4")]
+        "xz" | "xz2" | "lzma" => xz::OneIOXz::get_reader(raw_reader),
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
             Ok(Box::new(raw_reader))
@@ -254,6 +260,8 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
         "bz2" | "bz" => bzip2::OneIOBzip2::get_writer(output_file),
         #[cfg(feature = "lz4")]
         "lz4" | "lz" => lz4::OneIOLz4::get_writer(output_file),
+        #[cfg(feature = "xz")]
+        "xz" | "xz2" | "lzma" => xz::OneIOXz::get_writer(output_file),
         _ => Ok(Box::new(BufWriter::new(output_file))),
     }
 }

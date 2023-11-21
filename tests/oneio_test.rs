@@ -88,6 +88,7 @@ fn test_reader_local() {
     test_read("tests/test_data.txt.gz");
     test_read("tests/test_data.txt.bz2");
     test_read("tests/test_data.txt.lz4");
+    test_read("tests/test_data.txt.xz");
 }
 
 #[test]
@@ -96,6 +97,7 @@ fn test_reader_remote() {
     test_read("https://spaces.bgpkit.org/oneio/test_data.txt.gz");
     test_read("https://spaces.bgpkit.org/oneio/test_data.txt.bz2");
     test_read("https://spaces.bgpkit.org/oneio/test_data.txt.lz4");
+    test_read("https://spaces.bgpkit.org/oneio/test_data.txt.xz");
 }
 
 #[test]
@@ -123,6 +125,7 @@ fn test_cache_reader() {
     test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt.gz");
     test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt.bz2");
     test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt.lz4");
+    test_read_cache("https://spaces.bgpkit.org/oneio/test_data.txt.xz");
 }
 
 #[test]
