@@ -16,7 +16,7 @@ keywords = ["io", "util", "s3", "ftp"]
 [[bin]]
 name="oneio"
 path="src/bin/oneio.rs"
-required-features=["all"]
+required-features=["cli"]
 
 [dependencies]
 # remote
