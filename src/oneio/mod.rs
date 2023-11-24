@@ -1,15 +1,9 @@
-#[cfg(feature = "bz")]
-mod bzip2;
-#[cfg(feature = "gz")]
-mod gzip;
-#[cfg(feature = "lz")]
-mod lz4;
+mod compressions;
 #[cfg(feature = "s3")]
 pub mod s3;
-#[cfg(feature = "xz")]
-mod xz;
 
 use crate::OneIoError;
+
 #[cfg(feature = "remote")]
 use std::collections::HashMap;
 use std::fs::File;
@@ -94,13 +88,13 @@ pub fn get_remote_reader(
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature = "gz")]
-        "gz" | "gzip" => gzip::OneIOGzip::get_reader(raw_reader),
+        "gz" | "gzip" => compressions::gzip::OneIOGzip::get_reader(raw_reader),
         #[cfg(feature = "bz")]
-        "bz2" | "bz" => bzip2::OneIOBzip2::get_reader(raw_reader),
+        "bz2" | "bz" => compressions::bzip2::OneIOBzip2::get_reader(raw_reader),
         #[cfg(feature = "lz4")]
-        "lz4" | "lz" => lz4::OneIOLz4::get_reader(raw_reader),
+        "lz4" | "lz" => compressions::lz4::OneIOLz4::get_reader(raw_reader),
         #[cfg(feature = "xz")]
-        "xz" | "xz2" | "lzma" => xz::OneIOXz::get_reader(raw_reader),
+        "xz" | "xz2" | "lzma" => compressions::xz::OneIOXz::get_reader(raw_reader),
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
             Ok(Box::new(raw_reader))
@@ -170,13 +164,13 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature = "gz")]
-        "gz" | "gzip" => gzip::OneIOGzip::get_reader(raw_reader),
+        "gz" | "gzip" => compressions::gzip::OneIOGzip::get_reader(raw_reader),
         #[cfg(feature = "bz")]
-        "bz2" | "bz" => bzip2::OneIOBzip2::get_reader(raw_reader),
+        "bz2" | "bz" => compressions::bzip2::OneIOBzip2::get_reader(raw_reader),
         #[cfg(feature = "lz4")]
-        "lz4" | "lz" => lz4::OneIOLz4::get_reader(raw_reader),
-        #[cfg(feature = "lz4")]
-        "xz" | "xz2" | "lzma" => xz::OneIOXz::get_reader(raw_reader),
+        "lz4" | "lz" => compressions::lz4::OneIOLz4::get_reader(raw_reader),
+        #[cfg(feature = "xz")]
+        "xz" | "xz2" | "lzma" => compressions::xz::OneIOXz::get_reader(raw_reader),
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
             Ok(Box::new(raw_reader))
@@ -255,13 +249,13 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature = "gz")]
-        "gz" | "gzip" => gzip::OneIOGzip::get_writer(output_file),
+        "gz" | "gzip" => compressions::gzip::OneIOGzip::get_writer(output_file),
         #[cfg(feature = "bz")]
-        "bz2" | "bz" => bzip2::OneIOBzip2::get_writer(output_file),
+        "bz2" | "bz" => compressions::bzip2::OneIOBzip2::get_writer(output_file),
         #[cfg(feature = "lz4")]
-        "lz4" | "lz" => lz4::OneIOLz4::get_writer(output_file),
+        "lz4" | "lz" => compressions::lz4::OneIOLz4::get_writer(output_file),
         #[cfg(feature = "xz")]
-        "xz" | "xz2" | "lzma" => xz::OneIOXz::get_writer(output_file),
+        "xz" | "xz2" | "lzma" => compressions::xz::OneIOXz::get_writer(output_file),
         _ => Ok(Box::new(BufWriter::new(output_file))),
     }
 }
