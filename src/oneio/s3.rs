@@ -38,9 +38,7 @@ pub fn s3_reader(bucket: &str, path: &str) -> Result<Box<dyn Read + Send>, OneIo
 pub fn s3_upload(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), OneIoError> {
     let bucket = s3_bucket(bucket)?;
     let mut reader = get_reader_raw(file_path)?;
-    let mut bytes: Vec<u8> = vec![];
-    reader.read_to_end(&mut bytes)?;
-    bucket.put_object(s3_path, bytes.as_slice())?;
+    bucket.put_object_stream(&mut reader, s3_path)?;
     Ok(())
 }
 
