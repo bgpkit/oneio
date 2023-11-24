@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -35,12 +35,47 @@ struct Cli {
     /// read through file and only print out stats
     #[clap(short, long)]
     stats: bool,
+
+    #[clap(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Upload file to S3-compatible object storage
+    UploadToS3 {
+        /// S3 bucket name
+        s3_bucket: String,
+
+        /// S3 file path (starting with `/`)
+        s3_path: String,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
     let path: &str = cli.file.to_str().unwrap();
     let outfile: Option<PathBuf> = cli.outfile;
+
+    if let Some(command) = cli.command {
+        match command {
+            Commands::UploadToS3 { s3_bucket, s3_path } => {
+                match oneio::s3_upload(s3_bucket.as_str(), s3_path.as_str(), path) {
+                    Ok(_) => {
+                        println!(
+                            "file successfully uploaded to s3://{}/{}",
+                            s3_bucket, s3_path
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("file upload error: {}", e);
+                    }
+                }
+            }
+        }
+        return;
+    }
+
     if cli.download {
         let out_path = match outfile {
             None => {
