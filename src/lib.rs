@@ -4,12 +4,12 @@
 //!
 //! Enable all compression algorithms, and handle remote files (default)
 //! ```toml
-//! oneio = "0.14"
+//! oneio = "0.15"
 //! ```
 //!
 //! Select from supported feature flags
 //! ```toml
-//! oneio = {version = "0.14", features = ["remote", "gz"]}
+//! oneio = {version = "0.15", features = ["remote", "gz"]}
 //! ```
 //!
 //! Supported feature flags:
