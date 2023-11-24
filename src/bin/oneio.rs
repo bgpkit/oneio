@@ -42,12 +42,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Parse individual MRT files given a file path, local or remote.
+    /// Upload file to S3-compatible object storage
     UploadToS3 {
-        /// File path to a MRT file, local or remote.
+        /// S3 bucket name
         s3_bucket: String,
 
-        /// Output as JSON objects
+        /// S3 file path (starting with `/`)
         s3_path: String,
     },
 }
