@@ -78,14 +78,7 @@ fn main() {
 
     if cli.download {
         let out_path = match outfile {
-            None => {
-                // infer file path and download to current directory
-                if !path.starts_with("http") && !path.starts_with("ftp") {
-                    eprintln!("{} is not a remote file, skip downloading", path);
-                    return;
-                }
-                path.split('/').last().unwrap().to_string()
-            }
+            None => path.split('/').last().unwrap().to_string(),
             Some(p) => p.to_str().unwrap().to_string(),
         };
 

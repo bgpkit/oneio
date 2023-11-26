@@ -108,14 +108,19 @@ pub fn download(
     local_path: &str,
     header: Option<HashMap<String, String>>,
 ) -> Result<(), OneIoError> {
-    let mut writer = get_writer_raw(local_path)?;
-
     if remote_path.starts_with("http") {
+        let mut writer = get_writer_raw(local_path)?;
         let mut response = get_remote_http_raw(remote_path, header.unwrap_or_default())?;
         response.copy_to(&mut writer)?;
     } else if remote_path.starts_with("ftp") {
+        let mut writer = get_writer_raw(local_path)?;
         let mut reader = get_remote_ftp_raw(remote_path)?;
         std::io::copy(&mut reader, &mut writer)?;
+    } else if remote_path.starts_with("s3") {
+        let parts = remote_path.split('/').collect::<Vec<&str>>();
+        let bucket = parts[2];
+        let path = parts[3..].join("/");
+        s3::s3_download(bucket, path.as_str(), local_path)?;
     } else {
         return Err(OneIoError::NotSupported(remote_path.to_string()));
     };
