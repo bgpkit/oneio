@@ -1,5 +1,6 @@
 use crate::oneio::OneIOCompression;
 use crate::OneIoError;
+use libflate::finish::AutoFinishUnchecked;
 use libflate::gzip::Decoder;
 use libflate::gzip::Encoder;
 use std::fs::File;
@@ -13,6 +14,8 @@ impl OneIOCompression for OneIOGzip {
     }
 
     fn get_writer(raw_writer: BufWriter<File>) -> Result<Box<dyn Write>, OneIoError> {
-        Ok(Box::new(Encoder::new(raw_writer)?))
+        // see libflate docs on the reasons of using [AutoFinishUnchecked].
+        let encoder = AutoFinishUnchecked::new(Encoder::new(raw_writer)?);
+        Ok(Box::new(encoder))
     }
 }
