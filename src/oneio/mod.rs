@@ -175,7 +175,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature = "gz")]
-        "gz" | "gzip" => compressions::gzip::OneIOGzip::get_reader(raw_reader),
+        "gz" | "gzip" | "tgz" => compressions::gzip::OneIOGzip::get_reader(raw_reader),
         #[cfg(feature = "bz")]
         "bz2" | "bz" => compressions::bzip2::OneIOBzip2::get_reader(raw_reader),
         #[cfg(feature = "lz4")]
@@ -260,7 +260,7 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
         #[cfg(feature = "gz")]
-        "gz" | "gzip" => compressions::gzip::OneIOGzip::get_writer(output_file),
+        "gz" | "gzip" | "tgz" => compressions::gzip::OneIOGzip::get_writer(output_file),
         #[cfg(feature = "bz")]
         "bz2" | "bz" => compressions::bzip2::OneIOBzip2::get_writer(output_file),
         #[cfg(feature = "lz4")]

@@ -24,7 +24,7 @@ required-features=["cli"]
 reqwest = {version="0.11", default-features=false, features = ["blocking"], optional=true }
 
 # compression
-flate2 = {version = "1", optional=true }
+libflate = {version = "2", optional=true }
 bzip2 = {version = "0.4.4", optional = true }
 lz4 = {version = "1.24", optional = true }
 xz2 = {version = "0.1", optional = true }
@@ -60,7 +60,7 @@ rustls = ["reqwest?/rustls-tls", "suppaftp?/rustls", "rust-s3?/sync-rustls-tls"]
 
 # supported compression algorithms, can be tuggled on/off individually
 compressions = ["gz", "bz", "lz", "xz"]
-gz = ["flate2"]
+gz = ["libflate"]
 bz = ["bzip2"]
 lz = ["lz4"]
 xz = ["xz2"]
@@ -74,6 +74,7 @@ s3= ["rust-s3", "native-tls", "dotenvy"]
 
 [dev-dependencies]
 serde = {version="1.0", features=["derive"]}
+tar = "0.4"
 
 # This list only includes examples which require additional features to run. These are more in the examples' directory.
 [[example]]
