@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::process::exit;
 use tracing::error;
 
 #[derive(Parser)]
@@ -60,6 +61,11 @@ fn main() {
     if let Some(command) = cli.command {
         match command {
             Commands::UploadToS3 { s3_bucket, s3_path } => {
+                if let Err(e) = oneio::s3_env_check() {
+                    eprintln!("missing s3 credentials");
+                    eprintln!("{}", e.to_string());
+                    exit(1);
+                }
                 match oneio::s3_upload(s3_bucket.as_str(), s3_path.as_str(), path) {
                     Ok(_) => {
                         println!(
@@ -130,9 +136,9 @@ fn main() {
             if let Err(e) = writeln!(stdout, "{}", line) {
                 if e.kind() != std::io::ErrorKind::BrokenPipe {
                     eprintln!("{}", e);
-                    std::process::exit(1);
+                    exit(1);
                 }
-                std::process::exit(0);
+                exit(0);
             }
         }
         count_chars += line.chars().count();
