@@ -20,6 +20,20 @@ pub fn s3_env_check() -> Result<(), OneIoError> {
     Ok(())
 }
 
+/// parse s3 url into bucket and file path
+pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
+    if !path.starts_with("s3://") {
+        return Err(OneIoError::S3UrlError(path.to_string()));
+    }
+    let parts = path.split('/').collect::<Vec<&str>>();
+    if parts.len() < 3 {
+        return Err(OneIoError::S3UrlError(path.to_string()));
+    }
+    let bucket = parts[2];
+    let key = parts[3..].join("/");
+    Ok((bucket.to_string(), key))
+}
+
 /// Get a S3 bucket object from the given bucket name.
 pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
     dotenvy::dotenv().ok();
@@ -99,4 +113,20 @@ pub fn s3_list(
         result.extend(item.contents.iter().map(|x| x.key.clone()));
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_s3_url_parse() {
+        const S3_URL: &str = "s3://test-bucket/test-path/test-file.txt";
+        let (bucket, path) = s3_url_parse(S3_URL).unwrap();
+        assert_eq!(bucket, "test-bucket");
+        assert_eq!(path, "test-path/test-file.txt");
+
+        const NON_S3_URL: &str = "http://test-bucket/test-path/test-file.txt";
+        assert!(s3_url_parse(NON_S3_URL).is_err());
+    }
 }

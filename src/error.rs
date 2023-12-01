@@ -27,6 +27,9 @@ pub enum OneIoError {
     #[error("S3 credential error: {0}")]
     S3CredentialError(#[from] s3::creds::error::CredentialsError),
     #[cfg(feature = "s3")]
+    #[error("S3 invalid url: {0}")]
+    S3UrlError(String),
+    #[cfg(feature = "s3")]
     #[error("S3 region error: {0}")]
     S3RegionError(#[from] s3::region::error::RegionError),
     #[cfg(feature = "s3")]
