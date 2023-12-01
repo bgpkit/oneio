@@ -12,6 +12,14 @@ use s3::serde_types::{HeadObjectResult, ListBucketResult};
 use s3::{Bucket, Region};
 use std::io::{Cursor, Read};
 
+/// Check if the environment variables for S3 are set.
+pub fn s3_env_check() -> Result<(), OneIoError> {
+    dotenvy::dotenv().ok();
+    let _ = Region::from_default_env()?;
+    let _ = Credentials::from_env()?;
+    Ok(())
+}
+
 /// Get a S3 bucket object from the given bucket name.
 pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
     dotenvy::dotenv().ok();
