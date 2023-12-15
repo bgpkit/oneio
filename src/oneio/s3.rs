@@ -12,7 +12,33 @@ use s3::serde_types::{HeadObjectResult, ListBucketResult};
 use s3::{Bucket, Region};
 use std::io::{Cursor, Read};
 
-/// Check if the environment variables for S3 are set.
+/// Checks if the necessary environment variables for AWS S3 are set.
+///
+/// The required credentials are
+/// - `AWS_ACCESS_KEY_ID`: This is the access key for your AWS account.
+/// - `AWS_SECRET_ACCESS_KEY`: This is the secret key associated with the `AWS_ACCESS_KEY_ID`.
+/// - `AWS_REGION`: The AWS region where the resources are hosted. For example, `us-east-1`. Use `auto` for Cloudflare R2.
+/// - `AWS_ENDPOINT`: The specific endpoint of the AWS service that the application will interact with.
+///
+/// # Errors
+///
+/// Returns a `OneIoError` if any of the following conditions are met:
+///
+/// - Failed to load the dotenv file.
+/// - Failed to retrieve the AWS region from the default environment.
+/// - Failed to retrieve the AWS credentials from the environment.
+///
+/// # Examples
+///
+/// ```no_run
+/// use oneio::s3_env_check;
+///
+/// fn main() {
+/// if let Err(e) = s3_env_check() {
+///         eprintln!("Error: {:?}", e);
+///     }
+/// }
+/// ```
 pub fn s3_env_check() -> Result<(), OneIoError> {
     dotenvy::dotenv().ok();
     let _ = Region::from_default_env()?;
@@ -20,7 +46,45 @@ pub fn s3_env_check() -> Result<(), OneIoError> {
     Ok(())
 }
 
-/// parse s3 url into bucket and file path
+/// Parse an S3 URL into a bucket and key.
+///
+/// This function takes an S3 URL as input and returns the bucket and key
+/// as a tuple. The URL should be in the format "s3://bucket-name/key".
+///
+/// # Arguments
+///
+/// * `path` - A string slice representing the S3 URL to be parsed.
+///
+/// # Examples
+///
+/// ```no_run
+/// use oneio::s3_url_parse;
+///
+/// let result = s3_url_parse("s3://my-bucket/my-folder/my-file.txt");
+/// match result {
+///     Ok((bucket, key)) => {
+///         println!("Bucket: {}", bucket);
+///         println!("Key: {}", key);
+///     }
+///     Err(err) => {
+///         eprintln!("Failed to parse S3 URL: {:?}", err);
+///     }
+/// }
+/// ```
+///
+/// # Errors
+///
+/// This function can return an `OneIoError` in the following cases:
+///
+/// * If the URL does not start with "s3://".
+/// * If the URL does not contain a bucket and key separated by "/".
+///
+/// In case of error, the `OneIoError` variant `S3UrlError` will be returned,
+/// containing the original URL string.
+///
+/// # Returns
+///
+/// Returns a `Result` containing the bucket and key as a tuple, or an `OneIoError` if parsing fails.
 pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
     if !path.starts_with("s3://") {
         return Err(OneIoError::S3UrlError(path.to_string()));
@@ -34,7 +98,36 @@ pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
     Ok((bucket.to_string(), key))
 }
 
-/// Get a S3 bucket object from the given bucket name.
+/// Creates an S3 bucket object with the specified bucket name.
+///
+/// # Arguments
+///
+/// * `bucket` - A string slice representing the name of the S3 bucket.
+///
+/// # Errors
+///
+/// This function can return a `OneIoError` if any of the following conditions occur:
+///
+/// * Failed to load the environment variables from the .env file.
+/// * Failed to create a new `Bucket` object with the given `bucket` name, `Region`,
+/// and `Credentials`.
+///
+/// # Examples
+///
+/// ```no_run
+/// use s3::Bucket;
+/// use oneio::s3_bucket;
+///
+/// let result = s3_bucket("my-bucket");
+/// match result {
+///     Ok(bucket) => {
+///         // Do something with the `bucket` object
+///     }
+///     Err(error) => {
+///         // Handle the error
+///     }
+/// }
+/// ```
 pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
     dotenvy::dotenv().ok();
     let mut bucket = Bucket::new(
@@ -46,10 +139,39 @@ pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
     Ok(bucket)
 }
 
-/// Get a reader for a S3 object.
+/// `s3_reader` function reads a file from an S3 bucket and returns a boxed reader implementing `Read` trait.
 ///
-/// **NOTE**: The content is read into memory first before returning the reader. Use with caution
-/// for large files.
+/// # Arguments
+///
+/// * `bucket` - A string slice that represents the name of the S3 bucket.
+/// * `path` - A string slice that represents the file path within the S3 bucket.
+///
+/// # Errors
+///
+/// The function can return an error of type `OneIoError`. This error occurs if there are any issues with the S3 operations, such as
+/// accessing the bucket or retrieving the object.
+///
+/// # Returns
+///
+/// The function returns a `Result` containing a boxed reader implementing `Read + Send` trait in case of a successful operation. The reader
+/// can be used to read the contents of the file stored in the S3 bucket. If the operation fails, an `OneIoError` is returned as an error.
+///
+/// # Example
+///
+/// ```
+/// use std::io::Read;
+/// use oneio::s3_reader;
+///
+/// let bucket = "my_bucket";
+/// let path = "path/to/file.txt";
+///
+/// let mut  reader = s3_reader(bucket, path)?;
+///
+/// let mut buffer = Vec::new();
+/// reader.read_to_end(&mut buffer)?;
+///
+/// assert_eq!(buffer, b"File content in S3 bucket");
+/// ```
 pub fn s3_reader(bucket: &str, path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     let bucket = s3_bucket(bucket)?;
     let object = bucket.get_object(path)?;
@@ -57,7 +179,26 @@ pub fn s3_reader(bucket: &str, path: &str) -> Result<Box<dyn Read + Send>, OneIo
     Ok(Box::new(Cursor::new(buf)))
 }
 
-/// Upload a file to S3.
+/// Uploads a file to an S3 bucket at the specified path.
+///
+/// # Arguments
+///
+/// * `bucket` - The name of the S3 bucket.
+/// * `s3_path` - The desired path of the file in the S3 bucket.
+/// * `file_path` - The path of the file to be uploaded.
+///
+/// # Returns
+///
+/// Returns Result<(), OneIoError> indicating success or failure.
+///
+/// # Examples
+///
+/// ```
+/// use oneio::s3_upload;
+///
+/// let result = s3_upload("my-bucket", "path/to/file.txt", "/path/to/local_file.txt");
+/// assert!(result.is_ok());
+/// ```
 pub fn s3_upload(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), OneIoError> {
     let bucket = s3_bucket(bucket)?;
     let mut reader = get_reader_raw(file_path)?;
@@ -65,7 +206,103 @@ pub fn s3_upload(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), One
     Ok(())
 }
 
-/// Download file from S3 bucket.
+/// Copies an object within the same Amazon S3 bucket.
+///
+/// # Arguments
+///
+/// * `bucket` - The name of the Amazon S3 bucket.
+/// * `s3_path` - The path of the source object to be copied.
+/// * `s3_path_new` - The path of the destination object.
+///
+/// # Errors
+///
+/// Returns an `Err` variant of the `OneIoError` enum if there was an error copying the object.
+///
+/// # Examples
+///
+/// ```no_run
+/// use oneio::s3_copy;
+///
+/// match s3_copy("my-bucket", "path/to/object.txt", "new-path/to/object.txt") {
+///     Err(error) => {
+///         println!("Failed to copy object: {:?}", error);
+///     }
+///     Ok(()) => {
+///         println!("Object copied successfully.");
+///     }
+/// }
+/// ```
+pub fn s3_copy(bucket: &str, s3_path: &str, s3_path_new: &str) -> Result<(), OneIoError> {
+    let bucket = s3_bucket(bucket)?;
+    bucket.copy_object_internal(s3_path, s3_path_new)?;
+    Ok(())
+}
+
+/// Deletes an object from an S3 bucket.
+///
+/// # Arguments
+///
+/// * `bucket` - The name of the S3 bucket.
+/// * `s3_path` - The path to the object in the S3 bucket.
+///
+/// # Errors
+///
+/// Returns an `OneIoError` if the deletion fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use oneio::{OneIoError, s3_delete};
+///
+/// fn example() -> Result<(), OneIoError> {
+///     let bucket = "my-bucket";
+///     let s3_path = "path/to/object.txt";
+///     s3_delete(bucket, s3_path)?;
+///     Ok(())
+/// }
+/// ```
+///
+pub fn s3_delete(bucket: &str, s3_path: &str) -> Result<(), OneIoError> {
+    let bucket = s3_bucket(bucket)?;
+    bucket.delete_object(s3_path)?;
+    Ok(())
+}
+
+/// Downloads a file from an S3 bucket and saves it locally.
+///
+/// # Arguments
+///
+/// * `bucket` - The name of the S3 bucket.
+/// * `s3_path` - The path to the file in the S3 bucket.
+/// * `file_path` - The path where the downloaded file will be saved locally.
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the download is successful.
+///
+/// Returns `Err` with an `OneIoError` if there was an error during the download.
+///
+/// # Errors
+///
+/// The function can return `OneIoError::S3DownloadError` if the HTTP response
+/// status code is not in the range of 200 to 299 (inclusive).
+///
+/// # Example
+///
+/// ```rust
+/// use std::path::Path;
+/// use oneio::s3_download;
+///
+/// let bucket = "my-bucket";
+/// let s3_path = "path/to/file.txt";
+/// let file_path = "local/file.txt";
+///
+/// match s3_download(bucket, s3_path, file_path) {
+///     Ok(()) => println!("Download successful!"),
+///     Err(err) => println!("Error while downloading: {:?}", err),
+/// }
+/// ```
+///
 pub fn s3_download(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), OneIoError> {
     let bucket = s3_bucket(bucket)?;
     let mut output_file = get_writer_raw(file_path)?;
@@ -76,7 +313,41 @@ pub fn s3_download(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), O
     }
 }
 
-/// Get S3 object head.
+/// # S3 Stats
+///
+/// Retrieves the head object result for a given bucket and path in Amazon S3.
+///
+/// ## Parameters
+///
+/// - `bucket`: A string that represents the name of the bucket in Amazon S3.
+/// - `path`: A string that represents the path of the object in the bucket.
+///
+/// ## Returns
+///
+/// Returns a `Result` that contains a `HeadObjectResult` if the operation was
+/// successful, otherwise returns a `OneIoError` indicating the S3 download error.
+///
+/// ## Example
+///
+/// ```no_run
+/// use oneio::s3_stats;
+///
+/// fn main() {
+/// let bucket = "my-bucket";
+///     let path = "my-folder/my-file.txt";
+///
+///     match s3_stats(bucket, path) {
+///         Ok(result) => {
+///             // Handle the successful result
+///             println!("Head Object: {:?}", result);
+///         }
+///         Err(error) => {
+///             // Handle the error
+///             println!("Error: {:?}", error);
+///         }
+///     }
+/// }
+/// ```
 pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError> {
     let bucket = s3_bucket(bucket)?;
     let (head_object, code): (HeadObjectResult, u16) = bucket.head_object(path)?;
@@ -86,7 +357,31 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
     }
 }
 
-/// Check if an S3 object exists.
+/// Check if a file exists in an S3 bucket.
+///
+/// # Arguments
+///
+/// * `bucket` - The name of the S3 bucket.
+/// * `path` - The path of the file in the S3 bucket.
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if the file exists, `Ok(false)` if the file does not exist,
+/// or an `Err` containing an `OneIoError::S3DownloadError` if there was an error
+/// checking the file's existence.
+///
+/// # Example
+///
+/// ```no_run
+/// use oneio::s3_exists;
+///
+/// let result = s3_exists("my-bucket", "path/to/file.txt");
+/// match result {
+///     Ok(true) => println!("File exists"),
+///     Ok(false) => println!("File does not exist"),
+///     Err(error) => eprintln!("Error: {:?}", error),
+/// }
+/// ```
 pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
     if let Err(OneIoError::S3DownloadError(code)) = s3_stats(bucket, path) {
         if code == 404 {
@@ -99,7 +394,41 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
     }
 }
 
-/// List S3 objects.
+/// Lists objects in the specified Amazon S3 bucket with given prefix and delimiter.
+///
+/// # Arguments
+///
+/// * `bucket` - Name of the S3 bucket.
+/// * `prefix` - A prefix to filter the objects by.
+/// * `delimiter` - An optional delimiter used to separate object key hierarchies.
+///
+/// # Returns
+///
+/// Returns a `Result` with a `Vec<String>` containing the object keys on success,
+/// or an `OneIoError` on failure.
+///
+/// # Example
+///
+/// ```no_run
+/// use oneio::s3_list;
+///
+/// let bucket = "my-bucket";
+/// let prefix = "folder/";
+/// let delimiter = Some("/");
+///
+/// let result = s3_list(bucket, prefix, delimiter);
+/// match result {
+///     Ok(objects) => {
+///         println!("Found {} objects:", objects.len());
+///         for object in objects {
+///             println!("{}", object);
+///         }
+///     }
+///     Err(error) => {
+///         eprintln!("Failed to list objects: {:?}", error);
+///     }
+/// }
+/// ```
 pub fn s3_list(
     bucket: &str,
     prefix: &str,
