@@ -48,7 +48,7 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
         None => Box::new(std::fs::File::open(path)?),
     };
     #[cfg(not(feature = "remote"))]
-    let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
+    let raw_reader: Box<dyn Read + Send> = Box::new(std::fs::File::open(path)?);
     Ok(raw_reader)
 }
 
