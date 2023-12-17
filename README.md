@@ -31,6 +31,7 @@ Supported feature flags:
 - `xz`: support `xz` files
 - `json`: allow reading JSON content into structs directly
 - `s3`: allow reading from AWS S3 compatible buckets
+- `no-cache`: disable caching for reading remote files
 
 ## Use `oneio` commandline tool
 
