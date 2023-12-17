@@ -57,7 +57,16 @@ fn get_remote_http_raw(
     path: &str,
     header: HashMap<String, String>,
 ) -> Result<reqwest::blocking::Response, OneIoError> {
-    let headers: reqwest::header::HeaderMap = (&header).try_into().expect("invalid headers");
+    let mut headers: reqwest::header::HeaderMap = (&header).try_into().expect("invalid headers");
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("oneio"),
+    );
+    #[cfg(feature = "no-cache")]
+    headers.insert(
+        reqwest::header::CACHE_CONTROL,
+        reqwest::header::HeaderValue::from_static("no-cache"),
+    );
     let client = reqwest::blocking::Client::builder()
         .default_headers(headers)
         .build()?;

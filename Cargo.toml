@@ -66,11 +66,14 @@ lz = ["lz4"]
 xz = ["xz2"]
 
 remote=["reqwest", "suppaftp"]
-cli = ["clap", "tracing", "s3"]
+cli = ["clap", "tracing", "s3", "no-cache"]
 json = ["serde", "serde_json"]
 
 # s3 support, off by default
 s3= ["rust-s3", "native-tls", "dotenvy"]
+
+# no-cache
+no-cache = []
 
 [dev-dependencies]
 serde = {version="1.0", features=["derive"]}
