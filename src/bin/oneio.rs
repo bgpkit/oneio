@@ -3,7 +3,6 @@ use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::exit;
-use tracing::error;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
