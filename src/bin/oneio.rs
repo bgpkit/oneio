@@ -3,7 +3,6 @@ use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::exit;
-use tracing::error;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -128,8 +127,8 @@ fn main() {
         let line = match line {
             Ok(l) => l,
             Err(e) => {
-                error!("Cannot read line from {}: {}", path, e);
-                continue;
+                eprintln!("Cannot read line from {}: {}", path, e);
+                exit(1);
             }
         };
         if !cli.stats {
