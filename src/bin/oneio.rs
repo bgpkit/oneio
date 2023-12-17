@@ -128,8 +128,8 @@ fn main() {
         let line = match line {
             Ok(l) => l,
             Err(e) => {
-                error!("Cannot read line from {}: {}", path, e);
-                continue;
+                eprintln!("Cannot read line from {}: {}", path, e);
+                exit(1);
             }
         };
         if !cli.stats {
