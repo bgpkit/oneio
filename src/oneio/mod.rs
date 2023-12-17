@@ -15,19 +15,40 @@ pub trait OneIOCompression {
     fn get_writer(raw_writer: BufWriter<File>) -> Result<Box<dyn Write>, OneIoError>;
 }
 
-fn get_reader_raw(path: &str) -> Result<Box<dyn Read>, OneIoError> {
+#[cfg(feature = "remote")]
+fn get_protocol(path: &str) -> Option<String> {
+    let parts = path.split("://").collect::<Vec<&str>>();
+    if parts.len() < 2 {
+        return None;
+    }
+    Some(parts[0].to_string())
+}
+
+fn get_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     #[cfg(feature = "remote")]
-    let raw_reader: Box<dyn Read> = if path.starts_with("http") {
-        let response = get_remote_http_raw(path, HashMap::new())?;
-        Box::new(response)
-    } else if path.starts_with("ftp") {
-        let response = get_remote_ftp_raw(path)?;
-        Box::new(response)
-    } else {
-        Box::new(std::fs::File::open(path)?)
+    let raw_reader: Box<dyn Read + Send> = match get_protocol(path) {
+        Some(protocol) => match protocol.as_str() {
+            "http" | "https" => {
+                let response = get_remote_http_raw(path, HashMap::new())?;
+                Box::new(response)
+            }
+            "ftp" => {
+                let response = get_remote_ftp_raw(path)?;
+                Box::new(response)
+            }
+            #[cfg(feature = "s3")]
+            "s3" => {
+                let (bucket, path) = s3::s3_url_parse(path)?;
+                Box::new(s3::s3_reader(bucket.as_str(), path.as_str())?)
+            }
+            _ => {
+                return Err(OneIoError::NotSupported(path.to_string()));
+            }
+        },
+        None => Box::new(std::fs::File::open(path)?),
     };
     #[cfg(not(feature = "remote"))]
-    let raw_reader: Box<dyn Read> = Box::new(std::fs::File::open(path)?);
+    let raw_reader: Box<dyn Read + Send> = Box::new(std::fs::File::open(path)?);
     Ok(raw_reader)
 }
 
@@ -122,10 +143,8 @@ pub fn download(
         }
         #[cfg(feature = "s3")]
         "s3" => {
-            let parts = remote_path.split('/').collect::<Vec<&str>>();
-            let bucket = parts[2];
-            let path = parts[3..].join("/");
-            s3::s3_download(bucket, path.as_str(), local_path)?;
+            let (bucket, path) = s3::s3_url_parse(remote_path)?;
+            s3::s3_download(bucket.as_str(), path.as_str(), local_path)?;
         }
         _ => {
             return Err(OneIoError::NotSupported(remote_path.to_string()));
@@ -159,18 +178,8 @@ pub fn read_lines(path: &str) -> Result<Lines<BufReader<Box<dyn Read + Send>>>, 
 
 /// get a generic Box<dyn Read> reader
 pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
-    #[cfg(feature = "remote")]
-    let raw_reader: Box<dyn Read + Send> = if path.starts_with("http") {
-        let response = get_remote_http_raw(path, HashMap::new())?;
-        Box::new(response)
-    } else if path.starts_with("ftp") {
-        let response = get_remote_ftp_raw(path)?;
-        Box::new(response)
-    } else {
-        Box::new(std::fs::File::open(path)?)
-    };
-    #[cfg(not(feature = "remote"))]
-    let raw_reader: Box<dyn Read + Send> = Box::new(std::fs::File::open(path)?);
+    // get raw bytes reader
+    let raw_reader = get_reader_raw(path)?;
 
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     match file_type {
