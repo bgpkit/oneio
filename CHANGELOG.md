@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.15.8 - 2023-12-18
+
+### Highlights
+
+* Added `vendored-openssl` flag to enable GitHub actions builds for different systems.
+* GitHub releases automatically builds CLI binary for macOS (Universal), and linux (arm and amd64)
+
 ## v0.15.8-beta.1 - 2023-12-16
 
 ### Highlights
