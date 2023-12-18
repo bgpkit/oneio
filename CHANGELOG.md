@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.15.8-beta.1 - 2023-12-16
+
+### Highlights
+* CLI application now depends on Rustls instead of native openssl. This will allow us to build a binaries for more platforms.
+
 ## v0.15.7 - 2023-12-16
 
 ### Highlights
