@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.15.8-beta.2 - 2023-12-16
+
+### Highlights
+* GitHub actions uses vendored openssl instead of system openssl. 
+
 ## v0.15.8-beta.1 - 2023-12-16
 
 ### Highlights
