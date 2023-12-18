@@ -66,7 +66,7 @@ lz = ["lz4"]
 xz = ["xz2"]
 
 remote=["reqwest", "suppaftp"]
-cli = ["clap", "tracing", "s3", "no-cache"]
+cli = ["clap", "tracing", "s3", "no-cache", "rustls"]
 json = ["serde", "serde_json"]
 
 # s3 support, off by default
