@@ -1,4 +1,4 @@
-use crate::oneio::OneIOCompression;
+use crate::oneio::compressions::OneIOCompression;
 use crate::OneIoError;
 use lz4::Decoder;
 use std::fs::File;

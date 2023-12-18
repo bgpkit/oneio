@@ -33,10 +33,8 @@ use std::io::{Cursor, Read};
 /// ```no_run
 /// use oneio::s3_env_check;
 ///
-/// fn main() {
 /// if let Err(e) = s3_env_check() {
-///         eprintln!("Error: {:?}", e);
-///     }
+///     eprintln!("Error: {:?}", e);
 /// }
 /// ```
 pub fn s3_env_check() -> Result<(), OneIoError> {
@@ -332,19 +330,17 @@ pub fn s3_download(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), O
 /// ```no_run
 /// use oneio::s3_stats;
 ///
-/// fn main() {
 /// let bucket = "my-bucket";
-///     let path = "my-folder/my-file.txt";
+/// let path = "my-folder/my-file.txt";
 ///
-///     match s3_stats(bucket, path) {
-///         Ok(result) => {
-///             // Handle the successful result
-///             println!("Head Object: {:?}", result);
-///         }
-///         Err(error) => {
-///             // Handle the error
-///             println!("Error: {:?}", error);
-///         }
+/// match s3_stats(bucket, path) {
+///     Ok(result) => {
+///         // Handle the successful result
+///         println!("Head Object: {:?}", result);
+///     }
+///     Err(error) => {
+///         // Handle the error
+///         println!("Error: {:?}", error);
 ///     }
 /// }
 /// ```
@@ -385,12 +381,12 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
 pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
     if let Err(OneIoError::S3DownloadError(code)) = s3_stats(bucket, path) {
         if code == 404 {
-            return Ok(false);
+            Ok(false)
         } else {
-            return Err(OneIoError::S3DownloadError(code));
+            Err(OneIoError::S3DownloadError(code))
         }
     } else {
-        return Ok(true);
+        Ok(true)
     }
 }
 

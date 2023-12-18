@@ -135,15 +135,7 @@ mod oneio;
 pub use error::OneIoError;
 
 #[cfg(feature = "remote")]
-pub use crate::oneio::download;
-pub use crate::oneio::get_cache_reader;
-pub use crate::oneio::get_reader;
-#[cfg(feature = "remote")]
-pub use crate::oneio::get_remote_reader;
-pub use crate::oneio::get_writer;
-#[cfg(feature = "json")]
-pub use crate::oneio::read_json_struct;
-pub use crate::oneio::read_lines;
-pub use crate::oneio::read_to_string;
+pub use crate::oneio::remote::*;
 #[cfg(feature = "s3")]
 pub use crate::oneio::s3::*;
+pub use crate::oneio::*;
