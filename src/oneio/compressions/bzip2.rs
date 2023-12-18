@@ -1,4 +1,4 @@
-use crate::oneio::OneIOCompression;
+use crate::oneio::compressions::OneIOCompression;
 use crate::OneIoError;
 use bzip2::read::BzDecoder;
 use bzip2::write::BzEncoder;

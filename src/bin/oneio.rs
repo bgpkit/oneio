@@ -62,7 +62,7 @@ fn main() {
             Commands::UploadToS3 { s3_bucket, s3_path } => {
                 if let Err(e) = oneio::s3_env_check() {
                     eprintln!("missing s3 credentials");
-                    eprintln!("{}", e.to_string());
+                    eprintln!("{}", e);
                     exit(1);
                 }
                 match oneio::s3_upload(s3_bucket.as_str(), s3_path.as_str(), path) {

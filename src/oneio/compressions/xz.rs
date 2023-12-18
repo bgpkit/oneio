@@ -1,4 +1,4 @@
-use crate::oneio::OneIOCompression;
+use crate::oneio::compressions::OneIOCompression;
 use crate::OneIoError;
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
