@@ -90,3 +90,7 @@ tar = "0.4"
 [[example]]
 name = "s3_operations"
 required-features = ["s3"]
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.tar.gz"
+pkg-fmt = "tgz"
