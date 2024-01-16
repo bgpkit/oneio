@@ -48,45 +48,6 @@ thiserror = "1.0"
 
 openssl = { version = "0.10", features = ["vendored"], optional = true }
 
-[features]
-default = ["lib"]
-all = ["lib", "cli", "s3"]
-lib = ["remote", "compressions", "json", "lib-native-tls"]
-
-# choice between native TLS or rustls
-lib-native-tls = ["native-tls"]
-lib-rustls = ["rustls"]
-# optional flags to select native-tls or rust-tls
-native-tls = ["reqwest?/default-tls", "suppaftp?/native-tls", "rust-s3?/sync-native-tls"]
-rustls = ["reqwest?/rustls-tls", "suppaftp?/rustls", "rust-s3?/sync-rustls-tls"]
-
-# supported compression algorithms, can be tuggled on/off individually
-compressions = ["gz", "bz", "lz", "xz"]
-gz = ["libflate"]
-bz = ["bzip2"]
-lz = ["lz4"]
-xz = ["xz2"]
-
-remote=["reqwest", "suppaftp"]
-cli = ["clap", "tracing", "s3", "no-cache"]
-json = ["serde", "serde_json"]
-
-# s3 support, off by default
-s3= ["rust-s3", "native-tls", "dotenvy"]
-
-# no-cache
-no-cache = []
-
-# vendored openssl
-vendored-openssl = ["openssl"]
-
-[dev-dependencies]
-serde = {version="1.0", features=["derive"]}
-tracing = "0.1"
-tracing-subscriber = "0.3"
-tar = "0.4"
-
-# This list only includes examples which require additional features to run. These are more in the examples' directory.
-[[example]]
-name = "s3_operations"
-required-features = ["s3"]
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.tar.gz"
+pkg-fmt = "tgz"
