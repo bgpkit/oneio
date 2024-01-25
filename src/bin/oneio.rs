@@ -10,7 +10,7 @@ use std::process::exit;
 struct Cli {
     /// file to open, remote or local
     #[clap(name = "FILE")]
-    file: PathBuf,
+    file: Option<PathBuf>,
 
     /// download the file to current directory, similar to run `wget`
     #[clap(short, long)]
@@ -42,44 +42,90 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Upload file to S3-compatible object storage
-    UploadToS3 {
+    /// S3-related subcommands
+    S3 {
+        #[clap(subcommand)]
+        s3_command: S3Commands,
+    },
+}
+
+#[derive(Subcommand)]
+enum S3Commands {
+    /// Upload file to S3
+    Upload {
         /// S3 bucket name
-        s3_bucket: String,
+        #[clap()]
+        bucket: String,
 
         /// S3 file path (starting with `/`)
-        s3_path: String,
+        #[clap()]
+        path: String,
+    },
+    /// List S3 bucket
+    List {
+        #[clap()]
+        bucket: String,
+
+        #[clap()]
+        prefix: String,
     },
 }
 
 fn main() {
     let cli = Cli::parse();
-    let path: &str = cli.file.to_str().unwrap();
     let outfile: Option<PathBuf> = cli.outfile;
 
     if let Some(command) = cli.command {
         match command {
-            Commands::UploadToS3 { s3_bucket, s3_path } => {
-                if let Err(e) = oneio::s3_env_check() {
-                    eprintln!("missing s3 credentials");
-                    eprintln!("{}", e);
-                    exit(1);
-                }
-                match oneio::s3_upload(s3_bucket.as_str(), s3_path.as_str(), path) {
-                    Ok(_) => {
-                        println!(
-                            "file successfully uploaded to s3://{}/{}",
-                            s3_bucket, s3_path
-                        );
+            Commands::S3 { s3_command } => match s3_command {
+                S3Commands::Upload {
+                    bucket: s3_bucket,
+                    path: s3_path,
+                } => {
+                    if let Err(e) = oneio::s3_env_check() {
+                        eprintln!("missing s3 credentials");
+                        eprintln!("{}", e);
+                        exit(1);
                     }
-                    Err(e) => {
-                        eprintln!("file upload error: {}", e);
+                    let path_string = cli.file.clone().unwrap().to_str().unwrap().to_string();
+                    let path = path_string.as_str();
+                    match oneio::s3_upload(s3_bucket.as_str(), s3_path.as_str(), path) {
+                        Ok(_) => {
+                            println!(
+                                "file successfully uploaded to s3://{}/{}",
+                                s3_bucket, s3_path
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("file upload error: {}", e);
+                        }
                     }
+                    return;
                 }
-            }
+                S3Commands::List { bucket, prefix } => {
+                    if let Err(e) = oneio::s3_env_check() {
+                        eprintln!("missing s3 credentials");
+                        eprintln!("{}", e);
+                        exit(1);
+                    }
+                    match oneio::s3_list(bucket.as_str(), prefix.as_str(), None) {
+                        Ok(paths) => {
+                            paths.iter().for_each(|p| println!("{p}"));
+                        }
+                        Err(e) => {
+                            eprintln!("unable to list bucket content");
+                            eprintln!("{}", e);
+                            exit(1);
+                        }
+                    }
+                    return;
+                }
+            },
         }
-        return;
     }
+
+    let path_string = cli.file.clone().unwrap().to_str().unwrap().to_string();
+    let path = path_string.as_str();
 
     if cli.download {
         let out_path = match outfile {
