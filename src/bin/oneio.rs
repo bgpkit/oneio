@@ -74,8 +74,8 @@ enum S3Commands {
         prefix: String,
 
         /// delimiter for directory listing
-        #[clap(short, long, default_value = "/")]
-        delimiter: String,
+        #[clap(short, long)]
+        delimiter: Option<String>,
 
         /// showing directories only
         #[clap(short, long)]
@@ -125,7 +125,7 @@ fn main() {
                         eprintln!("{}", e);
                         exit(1);
                     }
-                    match oneio::s3_list(bucket.as_str(), prefix.as_str(), Some(delimiter), dirs) {
+                    match oneio::s3_list(bucket.as_str(), prefix.as_str(), delimiter, dirs) {
                         Ok(paths) => {
                             paths.iter().for_each(|p| println!("{p}"));
                         }
