@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.15.9 - 2024-01-26
+
+### Highlights
+
+- add support for installing via [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall)
+- `s3_list` now accepts a new forth parameter, `dirs` boolean flag, to allow returning only the matching directories
+- add `oneio s3 list` and `oneio s3 upload` commands to the CLI
+
+### Breaking changes
+
+The signature of `s3_list` function is now changed to:
+```rust
+pub fn s3_list(
+    bucket: &str,
+    prefix: &str,
+    delimiter: Option<String>,
+    dirs: bool,
+) -> Result<Vec<String>, OneIoError> {}
+```
+This includes changes of:
+1. `delimiter` changed from `Option<&str>` to `Option<String>`
+2. new `dirs` boolean flag to allow returning only matching directories in the specified prefix
+    - the `delimiter` is also automatically forced to `Some("/".to_string())` if `dirs` is specified and `delimiter` is specified as `None`.
+ 
+### Misc
+
+- "cargo publish" process is now automated with GitHub actions
+- test process now makes sure `s3` modules' doc-tests must compile
+
 ## v0.15.8 - 2023-12-18
 
 ### Highlights
