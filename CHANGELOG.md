@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.15.10 - 2024-01-26
+
+### Hot fix
+
+- fixed issue where `oneio s3 list BUCKET PREFIX` command not showing files match the prefix unless they are on the same directory as the prefix
+- fixed issue where running `oneio` without argument causing program to panic
+
 ## v0.15.9 - 2024-01-26
 
 ### Highlights
