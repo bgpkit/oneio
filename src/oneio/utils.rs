@@ -66,16 +66,17 @@ pub fn read_json_struct<T: serde::de::DeserializeOwned>(path: &str) -> Result<T,
 /// # Example
 ///
 /// ```rust,no_run
-/// use std::io::{BufRead, BufReader, Lines, Read};
-/// use std::fs::File;
-/// use std::io::Error as OneIoError;
-/// use oneio::get_reader;
+/// use std::io::BufRead;
+/// use std::io::BufReader;
+/// const TEST_TEXT: &str = "OneIO test file.
+/// This is a test.";
 ///
-/// pub fn read_lines(path: &str) -> Result<Lines<BufReader<Box<dyn Read + Send>>>, OneIoError> {
-///     let reader = get_reader(path)?;
-///     let buf_reader = BufReader::new(reader);
-///     Ok(buf_reader.lines())
-/// }
+/// let lines = oneio::read_lines("https://spaces.bgpkit.org/oneio/test_data.txt.gz").unwrap()
+///     .map(|line| line.unwrap()).collect::<Vec<String>>();
+///
+/// assert_eq!(lines.len(), 2);
+/// assert_eq!(lines[0].as_str(), "OneIO test file.");
+/// assert_eq!(lines[1].as_str(), "This is a test.");
 /// ```
 pub fn read_lines(path: &str) -> Result<Lines<BufReader<Box<dyn Read + Send>>>, OneIoError> {
     let reader = get_reader(path)?;
