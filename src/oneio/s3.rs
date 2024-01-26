@@ -156,17 +156,17 @@ pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
 ///
 /// # Example
 ///
-/// ```
+/// ```rust,no_run
 /// use std::io::Read;
 /// use oneio::s3_reader;
 ///
 /// let bucket = "my_bucket";
 /// let path = "path/to/file.txt";
 ///
-/// let mut  reader = s3_reader(bucket, path)?;
+/// let mut  reader = s3_reader(bucket, path).unwrap();
 ///
 /// let mut buffer = Vec::new();
-/// reader.read_to_end(&mut buffer)?;
+/// reader.read_to_end(&mut buffer).unwrap();
 ///
 /// assert_eq!(buffer, b"File content in S3 bucket");
 /// ```
@@ -191,7 +191,7 @@ pub fn s3_reader(bucket: &str, path: &str) -> Result<Box<dyn Read + Send>, OneIo
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,no_run
 /// use oneio::s3_upload;
 ///
 /// let result = s3_upload("my-bucket", "path/to/file.txt", "/path/to/local_file.txt");
@@ -327,7 +327,7 @@ pub fn s3_download(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), O
 ///
 /// ## Example
 ///
-/// ```no_run
+/// ```rust,no_run
 /// use oneio::s3_stats;
 ///
 /// let bucket = "my-bucket";

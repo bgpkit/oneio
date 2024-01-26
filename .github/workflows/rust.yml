@@ -32,8 +32,8 @@ jobs:
       - name: Build lib with all features
         run: cargo build --all-features
 
-      - name: Run test for lib feature
-        run: cargo test --features lib --test oneio_test
+      - name: Run test for lib + s3 features (s3 for doc compilation tests)
+        run: cargo test --features s3
 
       - name: Run format check
         run: cargo fmt --check
