@@ -397,6 +397,7 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
 /// * `bucket` - Name of the S3 bucket.
 /// * `prefix` - A prefix to filter the objects by.
 /// * `delimiter` - An optional delimiter used to separate object key hierarchies.
+/// * `dirs` - A flag to show only directories under the given prefix if set to true
 ///
 /// # Returns
 ///
@@ -410,9 +411,9 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
 ///
 /// let bucket = "my-bucket";
 /// let prefix = "folder/";
-/// let delimiter = Some("/");
+/// let delimiter = Some("/".to_string());
 ///
-/// let result = s3_list(bucket, prefix, delimiter);
+/// let result = s3_list(bucket, prefix, delimiter, false);
 /// match result {
 ///     Ok(objects) => {
 ///         println!("Found {} objects:", objects.len());
@@ -428,14 +429,25 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
 pub fn s3_list(
     bucket: &str,
     prefix: &str,
-    delimiter: Option<&str>,
+    delimiter: Option<String>,
+    dirs: bool,
 ) -> Result<Vec<String>, OneIoError> {
+    let fixed_delimiter = match dirs && delimiter.is_none() {
+        true => Some("/".to_string()),
+        false => delimiter,
+    };
     let bucket = s3_bucket(bucket)?;
-    let mut list: Vec<ListBucketResult> =
-        bucket.list(prefix.to_string(), delimiter.map(|x| x.to_string()))?;
+    let mut list: Vec<ListBucketResult> = bucket.list(prefix.to_string(), fixed_delimiter)?;
     let mut result = vec![];
     for item in list.iter_mut() {
-        result.extend(item.contents.iter().map(|x| x.key.clone()));
+        match dirs {
+            true => result.extend(
+                item.common_prefixes
+                    .iter()
+                    .flat_map(|x| x.iter().map(|p| p.prefix.clone())),
+            ),
+            false => result.extend(item.contents.iter().map(|x| x.key.clone())),
+        }
     }
     Ok(result)
 }

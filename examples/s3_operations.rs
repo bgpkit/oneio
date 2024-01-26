@@ -55,7 +55,7 @@ fn main() {
     );
 
     info!("list S3 files");
-    let res = s3_list("oneio-test", "test/", Some("/")).unwrap();
+    let res = s3_list("oneio-test", "test/", Some("/".to_string()), false).unwrap();
     dbg!(res);
 
     info!("read compressed s3 file by url");

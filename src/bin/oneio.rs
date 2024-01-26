@@ -57,17 +57,27 @@ enum S3Commands {
         #[clap()]
         bucket: String,
 
-        /// S3 file path (starting with `/`)
+        /// S3 file path
         #[clap()]
         path: String,
     },
     /// List S3 bucket
     List {
+        /// S3 bucket name
         #[clap()]
         bucket: String,
 
-        #[clap()]
+        /// S3 file path
+        #[clap(default_value = "")]
         prefix: String,
+
+        /// delimiter for directory listing
+        #[clap(short, long, default_value = "/")]
+        delimiter: String,
+
+        /// showing directories only
+        #[clap(short, long)]
+        dirs: bool,
     },
 }
 
@@ -102,13 +112,18 @@ fn main() {
                     }
                     return;
                 }
-                S3Commands::List { bucket, prefix } => {
+                S3Commands::List {
+                    bucket,
+                    prefix,
+                    delimiter,
+                    dirs,
+                } => {
                     if let Err(e) = oneio::s3_env_check() {
                         eprintln!("missing s3 credentials");
                         eprintln!("{}", e);
                         exit(1);
                     }
-                    match oneio::s3_list(bucket.as_str(), prefix.as_str(), None) {
+                    match oneio::s3_list(bucket.as_str(), prefix.as_str(), Some(delimiter), dirs) {
                         Ok(paths) => {
                             paths.iter().for_each(|p| println!("{p}"));
                         }
