@@ -51,7 +51,8 @@ jobs:
           # (required) Comma-separated list of binary names (non-extension portion of filename) to build and upload.
           # Note that glob pattern is not supported yet.
           bin: oneio
-          features: cli,vendored-openssl
+          features: cli
+          checksum: sha256
           # (optional) Target triple, default is host triple.
           target: ${{ matrix.target }}
           # (required) GitHub token for uploading assets to GitHub Releases.

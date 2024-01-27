@@ -5,11 +5,11 @@
 [![Docs.rs](https://docs.rs/oneio/badge.svg)](https://docs.rs/oneio)
 [![License](https://img.shields.io/crates/l/oneio)](https://raw.githubusercontent.com/bgpkit/oneio/main/LICENSE)
 
-OneIO is a Rust library that provides unified simple IO interface for reading and writing to and from data files from different sources and compressions.
+OneIO is a Rust library that provides a unified simple IO interface for reading and writing to and from data files from different sources and compressions.
 
 ## Usage and Feature Flags
 
-Enable all compression algorithms, and handle remote files (default)
+Enable all compression algorithms and handle remote files (default)
 ```toml
 oneio = "0.15"
 ```
@@ -19,55 +19,66 @@ Select from supported feature flags
 oneio = {version = "0.15", default-features=false, features = ["remote", "gz"]}
 ```
 
-Supported feature flags:
-- `lib` (*default*): `["gz", "bz", "lz", "xz", "remote", "json"]`
-- `cli`: build commandline program `oneio`
-- `all`: all flags (`["lib", "cli", "s3"]`)
-- `lib-rustls`: use `rustls` instead of `native-tls` for remote files via https or S3, if either are enabled
+Default flags include `lib-core` and `rustls`.
+
+### Core features: `lib-core`
+
+`lib-core` core features include:
 - `remote`: allow reading from remote files, including http(s) and ftp
-- `gz`: support `gzip` files
-- `bz`: support `bzip2` files
-- `lz`: support `lz4` files
-- `xz`: support `xz` files
-- `json`: allow reading JSON content into structs directly
+- `compressions`: compression algorithms
+    - `gz`: support `gzip` files using `libflate` crate
+    - `bz`: support `bzip2` files using `bzip2` crate
+    - `lz`: support `lz4` files using `lz4` crate
+    - `xz`: support `xz` files using `xz2` crate
+- `json`: allow reading JSON content into structs with `serde` and `serde_json`
+
+### TLS choice: `rustls` or `native-tls`
+
+Users can choose between `rustls` or `native-tls` as their TLS library. We use `rustls` as the basic library.
+
+### Optional features: `cli`, `s3`
+
 - `s3`: allow reading from AWS S3 compatible buckets
-- `no-cache`: disable caching for reading remote files
+- `cli`: build commandline program `oneio`, uses the following features
+  - `lib-core`, `rustls`, `s3` for core functionalities
+  - `clap`, `tracing` for CLI basics
 
 ## Use `oneio` commandline tool
 
 OneIO comes with a commandline tool, `oneio`, that opens and reads local/remote files
-to terminal and handles decompression automatically. This can be useful if you want
+to terminal and handles decompression automatically. This can be useful if you want to
 read some compressed plain-text files from a local or remote source.
 
 ```text
-Mingwei Zhang <mingwei@bgpkit.com>
-OneIO is a Rust library that provides unified simple IO interface for
-reading and writing to and from data files from different sources and compressions.
+oneio attempts to read files from local or remote locations with any compression
 
-USAGE:
-    oneio [OPTIONS] <FILE>
+Usage: oneio [OPTIONS] [FILE] [COMMAND]
 
-ARGS:
-    <FILE>    file to open, remote or local
+Commands:
+  s3    S3-related subcommands
+  help  Print this message or the help of the given subcommand(s)
 
-OPTIONS:
-        --cache-dir <CACHE_DIR>      cache reading to specified directory
-        --cache-file <CACHE_FILE>    specify cache file name
-        --cache-force                force re-caching if local cache already exists
-    -d, --download                   download the file to current directory, similar to run `wget`
-    -h, --help                       Print help information
-    -o, --outfile <OUTFILE>          output file path
-    -s, --stats                      read through file and only print out stats
-    -V, --version                    Print version information
+Arguments:
+  [FILE]  file to open, remote or local
+
+Options:
+  -d, --download                 download the file to current directory, similar to run `wget`
+  -o, --outfile <OUTFILE>        output file path
+      --cache-dir <CACHE_DIR>    cache reading to specified directory
+      --cache-force              force re-caching if local cache already exists
+      --cache-file <CACHE_FILE>  specify cache file name
+  -s, --stats                    read through file and only print out stats
+  -h, --help                     Print help
+  -V, --version                  Print version
 ```
 
-You can just specify a data file location after `oneio`. The following command
+You can specify a data file location after `oneio`. The following command
 prints out the raw HTML file from <https://bgpkit.com>.
 ```bash
 oneio https://bgpkit.com
 ```
 
-Here is another example of using `oneio` to read an remote compressed JSON file,
+Here is another example of using `oneio` to read a remote compressed JSON file,
 pipe it to `jq` and count the number of JSON objects in the array.
 ```bash
 $ oneio https://data.bgpkit.com/peer-stats/as2rel-latest.json.bz2 | jq '.|length'  
@@ -76,7 +87,7 @@ $ oneio https://data.bgpkit.com/peer-stats/as2rel-latest.json.bz2 | jq '.|length
 
 You can also directly download a file with the `--download` (or `-d`) flag.
 ```bash
-$ oneio -d http://archive.routeviews.org/route-views.amsix/bgpdata/2022.11/RIBS/rib.20221107.0400.bz2
+$ oneio -d https://archive.routeviews.org/route-views.amsix/bgpdata/2022.11/RIBS/rib.20221107.0400.bz2
 file successfully downloaded to rib.20221107.0400.bz2
 
 $ ls -lh rib.20221107.0400.bz2 
@@ -95,6 +106,7 @@ The returned reader implements BufRead, and handles decompression from the follo
 - `gzip`: files ending with `gz` or `gzip`
 - `bzip2`: files ending with `bz` or `bz2`
 - `lz4`: files ending with `lz4` or `lz`
+- `xz`: files ending with `xz` or `xz2`
 
 It also handles reading from remote or local files transparently.
 
@@ -129,7 +141,7 @@ fn main() {
 }
 ```
 
-## Use OneIO Writer as Library
+## Use OneIO Writer as a Library
 
 [get_writer] returns a generic writer that implements [Write], and handles decompression from the following types:
 - `gzip`: files ending with `gz` or `gzip`
@@ -233,7 +245,7 @@ fn main() {
     );
     
     // list S3 files
-    let res = s3_list("oneio-test", "test/", Some("/")).unwrap();
+    let res = s3_list("oneio-test", "test/", Some("/"), false).unwrap();
 
     assert_eq!(
         false,
