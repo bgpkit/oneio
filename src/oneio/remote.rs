@@ -54,7 +54,6 @@ fn get_remote_http_raw(
     Ok(res)
 }
 
-#[cfg(feature = "remote")]
 /// get a reader for remote content with the capability to specify headers.
 ///
 /// Example usage:
@@ -90,7 +89,37 @@ pub fn get_remote_reader(
     }
 }
 
-#[cfg(feature = "remote")]
+/// Downloads a file from a remote location to a local path.
+///
+/// # Arguments
+///
+/// * `remote_path` - The remote path of the file to download.
+/// * `local_path` - The local path where the downloaded file will be saved.
+/// * `header` - Optional header information to include in the request. If not specified, an empty HashMap should be provided.
+///
+/// # Errors
+///
+/// Returns an `Err` variant of `OneIoError` if any of the following occur:
+///
+/// * The protocol of the remote path is not supported.
+/// * An error occurs while downloading the file.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use std::collections::HashMap;
+/// use crate::oneio::{download, OneIoError};
+///
+/// fn main() -> Result<(), OneIoError> {
+///     let remote_path = "https://example.com/file.txt";
+///     let local_path = "path/to/save/file.txt";
+///     let header: Option<HashMap<String, String>> = None;
+///
+///     download(remote_path, local_path, header)?;
+///
+///     Ok(())
+/// }
+/// ```
 pub fn download(
     remote_path: &str,
     local_path: &str,
@@ -122,6 +151,57 @@ pub fn download(
         },
     };
     Ok(())
+}
+
+/// Downloads a file from a remote path and saves it locally with retry mechanism.
+///
+/// # Arguments
+///
+/// * `remote_path` - The URL or file path of the file to download.
+/// * `local_path` - The file path to save the downloaded file.
+/// * `header` - Optional headers to include in the download request.
+/// * `retry` - The number of times to retry downloading in case of failure.
+///
+/// # Errors
+///
+/// Returns an `Err` variant if downloading fails after all retries, otherwise `Ok(())` indicating success.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use oneio::download_with_retry;
+///
+/// let remote_path = "https://example.com/file.txt";
+/// let local_path = "/path/to/save/file.txt";
+/// let retry = 3;
+///
+/// match download_with_retry(remote_path, local_path, None, retry) {
+///     Ok(_) => println!("File downloaded successfully"),
+///     Err(e) => eprintln!("Error downloading file: {:?}", e),
+/// }
+/// ```
+pub fn download_with_retry(
+    remote_path: &str,
+    local_path: &str,
+    header: Option<HashMap<String, String>>,
+    retry: usize,
+) -> Result<(), OneIoError> {
+    let mut retry = retry;
+    loop {
+        match download(remote_path, local_path, header.clone()) {
+            Ok(_) => {
+                return Ok(());
+            }
+            Err(e) => {
+                if retry > 0 {
+                    retry -= 1;
+                    continue;
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    }
 }
 
 pub(crate) fn get_reader_raw_remote(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
