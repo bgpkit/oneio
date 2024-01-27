@@ -49,6 +49,13 @@ enum Commands {
         #[clap(subcommand)]
         s3_command: S3Commands,
     },
+
+    /// Generate SHA256 digest
+    Digest {
+        /// file to open, remote or local
+        #[clap(name = "FILE")]
+        file: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -100,8 +107,11 @@ fn main() {
                         exit(1);
                     }
                     let path_string = cli.file.clone().unwrap().to_str().unwrap().to_string();
-                    let path = path_string.as_str();
-                    match oneio::s3_upload(s3_bucket.as_str(), s3_path.as_str(), path) {
+                    match oneio::s3_upload(
+                        s3_bucket.as_str(),
+                        s3_path.as_str(),
+                        path_string.as_str(),
+                    ) {
                         Ok(_) => {
                             println!(
                                 "file successfully uploaded to s3://{}/{}",
@@ -138,6 +148,14 @@ fn main() {
                     return;
                 }
             },
+            Commands::Digest { file } => {
+                let path_string = file.as_path().to_string_lossy().to_string();
+                println!(
+                    "{}",
+                    oneio::get_sha256_digest(path_string.as_str()).unwrap()
+                );
+                return;
+            }
         }
     }
 

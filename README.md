@@ -36,12 +36,13 @@ Default flags include `lib-core` and `rustls`.
 
 Users can choose between `rustls` or `native-tls` as their TLS library. We use `rustls` as the basic library.
 
-### Optional features: `cli`, `s3`
+### Optional features: `cli`, `s3`, `digest`
 
 - `s3`: allow reading from AWS S3 compatible buckets
 - `cli`: build commandline program `oneio`, uses the following features
   - `lib-core`, `rustls`, `s3` for core functionalities
   - `clap`, `tracing` for CLI basics
+- `digest` for generating SHA256 digest string
 
 ## Use `oneio` commandline tool
 

@@ -134,8 +134,11 @@ mod oneio;
 
 pub use error::OneIoError;
 
+#[cfg(feature = "digest")]
+pub use crate::oneio::digest::*;
 #[cfg(feature = "remote")]
 pub use crate::oneio::remote::*;
 #[cfg(feature = "s3")]
 pub use crate::oneio::s3::*;
+
 pub use crate::oneio::*;

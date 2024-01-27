@@ -2,10 +2,13 @@
 mod compressions;
 #[cfg(feature = "compressions")]
 use crate::oneio::compressions::OneIOCompression;
+#[cfg(feature = "digest")]
+pub mod digest;
 #[cfg(feature = "remote")]
 pub mod remote;
 #[cfg(feature = "s3")]
 pub mod s3;
+
 pub mod utils;
 
 pub use utils::*;
