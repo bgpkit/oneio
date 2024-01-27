@@ -8,7 +8,7 @@ use std::process::exit;
 #[clap(author, version)]
 #[clap(propagate_version = true)]
 #[command(arg_required_else_help(true))]
-/// oneio attempts to read files from local or remote locations with any compression.
+/// oneio reads files from local or remote locations with any compression.
 struct Cli {
     /// file to open, remote or local
     #[clap(name = "FILE")]

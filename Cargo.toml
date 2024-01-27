@@ -65,7 +65,7 @@ cli = [
 native-tls = ["reqwest?/default-tls", "suppaftp?/native-tls", "rust-s3?/sync-native-tls"]
 rustls = ["reqwest?/rustls-tls", "suppaftp?/rustls", "rust-s3?/sync-rustls-tls"]
 
-# supported compression algorithms, can be tuggled on/off individually
+# supported compression algorithms, which can be toggled on/off individually
 compressions = ["gz", "bz", "lz", "xz"]
 gz = ["libflate"]
 bz = ["bzip2"]
