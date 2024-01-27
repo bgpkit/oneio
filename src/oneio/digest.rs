@@ -2,7 +2,8 @@
 //!
 //! The digest is calculated using the SHA256 algorithm.
 
-use crate::{get_reader, OneIoError};
+use crate::oneio::get_reader_raw;
+use crate::OneIoError;
 use ring::digest::{Context, SHA256};
 
 /// Calculate the SHA256 digest of a file.
@@ -23,7 +24,7 @@ pub fn get_sha256_digest(path: &str) -> Result<String, OneIoError> {
     let mut context = Context::new(&SHA256);
     let mut buffer = [0; 1024];
 
-    let mut reader = get_reader(path)?;
+    let mut reader = get_reader_raw(path)?;
     loop {
         let count = reader.read(&mut buffer)?;
         if count == 0 {
