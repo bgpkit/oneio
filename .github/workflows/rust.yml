@@ -24,10 +24,10 @@ jobs:
         run: cargo build --no-default-features
 
       - name: Build lib with native-tls
-        run: cargo build --features lib-native-tls
+        run: cargo build --no-default-features --features lib-core,native-tls
 
       - name: Build lib with rustls
-        run: cargo build --features lib-rustls
+        run: cargo build --no-default-features --features lib-core,rustls
 
       - name: Build lib with all features
         run: cargo build --all-features
