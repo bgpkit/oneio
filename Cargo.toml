@@ -31,7 +31,7 @@ xz2 = {version = "0.1", optional = true }
 
 # cli
 clap = {version= "4.4", features=["derive"], optional=true}
-tracing = {version="0.1.37", optional=true}
+tracing = {version="0.1", optional=true}
 
 # json
 serde = {version="1.0", optional=true }
@@ -39,23 +39,28 @@ serde_json = {version="1.0", optional=true }
 
 # s3
 rust-s3 = {version="0.34.0-rc4", optional=true, default-features=false, features=["sync"]}
-dotenvy = {version="0.15.7", optional=true}
+dotenvy = {version="0.15", optional=true}
 
 # ftp
 suppaftp = { version = "^5.1.0", optional = true }
 
 thiserror = "1.0"
 
-openssl = { version = "0.10", features = ["vendored"], optional = true }
-
 [features]
-default = ["lib"]
-all = ["lib", "cli", "s3"]
-lib = ["remote", "compressions", "json", "lib-native-tls"]
+# default features include the library core and use rustls by default
+default = ["lib-core", "rustls"]
 
-# choice between native TLS or rustls
-lib-native-tls = ["native-tls"]
-lib-rustls = ["rustls"]
+# library core dependency to enable reading from local/remote with compressions enabled
+lib-core = ["remote", "compressions", "json"]
+
+# cli dependencies
+cli = [
+    # core dependency
+    "lib-core", "rustls", "s3",
+    # CLI specific
+    "clap", "tracing",
+]
+
 # optional flags to select native-tls or rust-tls
 native-tls = ["reqwest?/default-tls", "suppaftp?/native-tls", "rust-s3?/sync-native-tls"]
 rustls = ["reqwest?/rustls-tls", "suppaftp?/rustls", "rust-s3?/sync-rustls-tls"]
@@ -68,17 +73,10 @@ lz = ["lz4"]
 xz = ["xz2"]
 
 remote=["reqwest", "suppaftp"]
-cli = ["clap", "tracing", "s3", "no-cache"]
 json = ["serde", "serde_json"]
 
 # s3 support, off by default
-s3= ["rust-s3", "native-tls", "dotenvy"]
-
-# no-cache
-no-cache = []
-
-# vendored openssl
-vendored-openssl = ["openssl"]
+s3= ["rust-s3", "dotenvy"]
 
 [dev-dependencies]
 serde = {version="1.0", features=["derive"]}
