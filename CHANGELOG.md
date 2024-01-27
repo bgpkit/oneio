@@ -2,13 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.15.12 - 2024-01-27
+
+### Hot fix
+
+- avoid automatic decompression when reading file for generating SHA256 digest
+
 ## v0.15.11 - 2024-01-27
 
 ### Library changes
 
 - switch to `rustls` as the default TLS backend
 - add `oneio::download_with_retry` function to allow retrying download
-- add `oneio::get_sha256_digest` function to library to calculate SHA256 digest of a file
+- add `oneio::get_sha256_digest` function to the library to calculate SHA256 digest of a file
  
 ### CLI changes
 
