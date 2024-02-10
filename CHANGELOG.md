@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.16.1 -- 2024-02-10
+
+### Highlights
+
+* add `oneio::exists(path: &str)` function to check if a local or remote file exists.
+    * currently support local file, http(s) remote and s3 remote files checking
+
+### Example usages
+```rust
+    assert!(!oneio::exists("https://spaces.bgpkit.org/oneio/test_data_NOT_EXIST.json").unwrap());
+    assert!(oneio::exists("https://spaces.bgpkit.org/oneio/test_data.json").unwrap());
+```
+
 ## v0.16.0 - 2024-01-29
 
 ### Breaking changes
