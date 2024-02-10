@@ -229,3 +229,41 @@ pub(crate) fn get_reader_raw_remote(path: &str) -> Result<Box<dyn Read + Send>, 
 
     Ok(raw_reader)
 }
+
+/// Check if a remote or local file exists.
+///
+/// # Arguments
+///
+/// * `path` - The path of the file to check.
+///
+/// # Returns
+///
+/// Returns a `Result` containing a `bool` indicating whether the file exists or not. If the path is not supported,
+/// an `Err` variant with an `OneIoError::NotSupported` error is returned. If there is an error during the file check,
+/// an `Err` variant with an `OneIoError` is returned.
+pub(crate) fn remote_file_exists(path: &str) -> Result<bool, OneIoError> {
+    match get_protocol(path) {
+        Some(protocol) => match protocol.as_str() {
+            "http" | "https" => {
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(2))
+                    .build()?;
+                let res = client.head(path).send()?;
+                Ok(res.status().is_success())
+            }
+            #[cfg(feature = "s3")]
+            "s3" => {
+                let (bucket, path) = crate::oneio::s3::s3_url_parse(path)?;
+                let res = crate::oneio::s3::s3_exists(bucket.as_str(), path.as_str())?;
+                Ok(res)
+            }
+            _ => {
+                return Err(OneIoError::NotSupported(path.to_string()));
+            }
+        },
+        None => {
+            // check if local file exists
+            Ok(std::path::Path::new(path).exists())
+        }
+    }
+}
