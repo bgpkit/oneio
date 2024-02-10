@@ -3,8 +3,12 @@ name: Rust
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
 
 env:
   CARGO_TERM_COLOR: always
@@ -24,16 +28,16 @@ jobs:
         run: cargo build --no-default-features
 
       - name: Build lib with native-tls
-        run: cargo build --no-default-features --features lib-core,native-tls
+        run: cargo build --no-default-features --features lib-core,native-tls && cargo tree --no-default-features --features lib-core,native-tls | grep -q rustls && {exit 1} || echo "success"
 
       - name: Build lib with rustls
-        run: cargo build --no-default-features --features lib-core,rustls
+        run: cargo build --no-default-features --features lib-core,rustls && cargo tree --no-default-features --features lib-core,rustls | grep -q native-tls && {exit 1} || echo "success"
 
       - name: Build lib with all features
         run: cargo build --all-features
 
-      - name: Run test for lib + s3 features (s3 for doc compilation tests)
-        run: cargo test --features s3
+      - name: Run test for lib + all optionals features
+        run: cargo test --all-features
 
       - name: Run format check
         run: cargo fmt --check

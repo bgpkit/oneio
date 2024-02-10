@@ -169,3 +169,29 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
         _ => Ok(Box::new(BufWriter::new(output_file))),
     }
 }
+
+/// Check if a file or directory exists.
+///
+/// This function takes a path as an argument and returns a `Result` indicating whether the file or directory at the given path exists or not.
+///
+/// # Examples
+///
+/// ```rust
+/// use crate::oneio::exists;
+///
+/// match exists("path/to/file.txt") {
+///     Ok(true) => println!("File exists."),
+///     Ok(false) => println!("File does not exist."),
+///     Err(error) => eprintln!("An error occurred: {}", error),
+/// }
+/// ```
+///
+/// # Errors
+///
+/// This function may return an `OneIoError` if there is an error accessing the file system or if the `remote` feature is enabled and there is an error
+pub fn exists(path: &str) -> Result<bool, OneIoError> {
+    #[cfg(feature = "remote")]
+    return remote::remote_file_exists(path);
+    #[cfg(not(feature = "remote"))]
+    Ok(std::path::Path::new(path).exists())
+}
