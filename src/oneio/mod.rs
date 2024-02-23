@@ -16,7 +16,7 @@ pub use utils::*;
 use crate::OneIoError;
 
 use std::fs::File;
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
 fn get_writer_raw(path: &str) -> Result<BufWriter<File>, OneIoError> {
@@ -32,8 +32,7 @@ fn get_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     #[cfg(feature = "remote")]
     let raw_reader: Box<dyn Read + Send> = remote::get_reader_raw_remote(path)?;
     #[cfg(not(feature = "remote"))]
-    let raw_reader: Box<dyn Read + Send> =
-        Box::new(std::io::BufReader::new(std::fs::File::open(path)?));
+    let raw_reader: Box<dyn Read + Send> = Box::new(std::fs::File::open(path)?);
     Ok(raw_reader)
 }
 
@@ -74,7 +73,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
         "xz" | "xz2" | "lzma" => compressions::xz::OneIOXz::get_reader(raw_reader),
         _ => {
             // unknown file type of file {}. try to read as uncompressed file
-            Ok(Box::new(raw_reader))
+            Ok(Box::new(BufReader::new(raw_reader)))
         }
     }
 }
