@@ -15,35 +15,35 @@ default-run = "oneio"
 keywords = ["io", "util", "s3", "ftp"]
 
 [[bin]]
-name="oneio"
-path="src/bin/oneio.rs"
-required-features=["cli"]
+name = "oneio"
+path = "src/bin/oneio.rs"
+required-features = ["cli"]
 
 [dependencies]
 # remote
-reqwest = {version="0.11", default-features=false, features = ["blocking"], optional=true }
+reqwest = { version = "0.11", default-features = false, features = ["blocking"], optional = true }
 
 # compression
-libflate = {version = "2", optional=true }
-bzip2 = {version = "0.4.4", optional = true }
-lz4 = {version = "1.24", optional = true }
-xz2 = {version = "0.1", optional = true }
+flate2 = { version = "1", default-features = false, features = ["zlib-ng"], optional = true }
+bzip2 = { version = "0.4.4", optional = true }
+lz4 = { version = "1.24", optional = true }
+xz2 = { version = "0.1", optional = true }
 
 # sha256
 ring = { version = "0.17", optional = true }
-hex = {version = "0.4", optional = true}
+hex = { version = "0.4", optional = true }
 
 # cli
-clap = {version= "4.4", features=["derive"], optional=true}
-tracing = {version="0.1", optional=true}
+clap = { version = "4.4", features = ["derive"], optional = true }
+tracing = { version = "0.1", optional = true }
 
 # json
-serde = {version="1.0", optional=true }
-serde_json = {version="1.0", optional=true }
+serde = { version = "1.0", optional = true }
+serde_json = { version = "1.0", optional = true }
 
 # s3
-rust-s3 = {version="0.34.0-rc4", optional=true, default-features=false, features=["sync"]}
-dotenvy = {version="0.15", optional=true}
+rust-s3 = { version = "0.34.0-rc4", optional = true, default-features = false, features = ["sync"] }
+dotenvy = { version = "0.15", optional = true }
 
 # ftp
 suppaftp = { version = "^5.1.0", optional = true }
@@ -73,19 +73,19 @@ digest = ["ring", "hex"]
 
 # supported compression algorithms, which can be toggled on/off individually
 compressions = ["gz", "bz", "lz", "xz"]
-gz = ["libflate"]
+gz = ["flate2"]
 bz = ["bzip2"]
 lz = ["lz4"]
 xz = ["xz2"]
 
-remote=["reqwest", "suppaftp"]
+remote = ["reqwest", "suppaftp"]
 json = ["serde", "serde_json"]
 
 # s3 support, off by default
-s3= ["rust-s3", "dotenvy"]
+s3 = ["rust-s3", "dotenvy"]
 
 [dev-dependencies]
-serde = {version="1.0", features=["derive"]}
+serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 tar = "0.4"
