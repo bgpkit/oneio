@@ -2,7 +2,7 @@ use crate::oneio::compressions::OneIOCompression;
 use crate::oneio::{compressions, get_writer_raw};
 use crate::OneIoError;
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{BufReader, Read};
 
 fn get_protocol(path: &str) -> Option<String> {
     let parts = path.split("://").collect::<Vec<&str>>();
@@ -209,22 +209,25 @@ pub(crate) fn get_reader_raw_remote(path: &str) -> Result<Box<dyn Read + Send>, 
         Some(protocol) => match protocol.as_str() {
             "http" | "https" => {
                 let response = get_remote_http_raw(path, HashMap::new())?;
-                Box::new(response)
+                Box::new(BufReader::new(response))
             }
             "ftp" => {
                 let response = get_remote_ftp_raw(path)?;
-                Box::new(response)
+                Box::new(BufReader::new(response))
             }
             #[cfg(feature = "s3")]
             "s3" => {
                 let (bucket, path) = crate::oneio::s3::s3_url_parse(path)?;
-                Box::new(crate::oneio::s3::s3_reader(bucket.as_str(), path.as_str())?)
+                Box::new(BufReader::new(crate::oneio::s3::s3_reader(
+                    bucket.as_str(),
+                    path.as_str(),
+                )?))
             }
             _ => {
                 return Err(OneIoError::NotSupported(path.to_string()));
             }
         },
-        None => Box::new(std::fs::File::open(path)?),
+        None => Box::new(BufReader::new(std::fs::File::open(path)?)),
     };
 
     Ok(raw_reader)
