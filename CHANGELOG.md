@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.16.2 -- 2024-02-23
+
+### Highlights
+
+* switching to `flate2` with `zlib-ng` as the compression library for handling `gzip` files
+    * `zlib-ng` is a drop-in replacement for `zlib` with better performance
+
 ## v0.16.1 -- 2024-02-10
 
 ### Highlights
@@ -10,9 +17,10 @@ All notable changes to this project will be documented in this file.
     * currently support local file, http(s) remote and s3 remote files checking
 
 ### Example usages
+
 ```rust
-    assert!(!oneio::exists("https://spaces.bgpkit.org/oneio/test_data_NOT_EXIST.json").unwrap());
-    assert!(oneio::exists("https://spaces.bgpkit.org/oneio/test_data.json").unwrap());
+assert!(!oneio::exists("https://spaces.bgpkit.org/oneio/test_data_NOT_EXIST.json").unwrap());
+assert!(oneio::exists("https://spaces.bgpkit.org/oneio/test_data.json").unwrap());
 ```
 
 ## v0.16.0 - 2024-01-29
@@ -24,12 +32,12 @@ All notable changes to this project will be documented in this file.
     - removed `no-cache` and `vendored-openssl` flags
     - removed `openssl` optional dependency
     - add `digest` feature flag to allow calculating SHA256 digest of a file, enabled by default
- 
+
 ### Library changes
 
 - add `oneio::download_with_retry` function to allow retrying download
 - add `oneio::get_sha256_digest` function to the library to calculate SHA256 digest of a file
- 
+
 ### CLI changes
 
 - add `oneio digest FILE` command to calculate file SHA256 digest
@@ -38,7 +46,8 @@ All notable changes to this project will be documented in this file.
 
 ### Hot fix
 
-- fixed issue where `oneio s3 list BUCKET PREFIX` command not showing files match the prefix unless they are on the same directory as the prefix
+- fixed issue where `oneio s3 list BUCKET PREFIX` command not showing files match the prefix unless they are on the same
+  directory as the prefix
 - fixed issue where running `oneio` without argument causing program to panic
 
 ## v0.15.9 - 2024-01-26
@@ -52,6 +61,7 @@ All notable changes to this project will be documented in this file.
 ### Breaking changes
 
 The signature of `s3_list` function is now changed to:
+
 ```rust
 pub fn s3_list(
     bucket: &str,
@@ -60,11 +70,14 @@ pub fn s3_list(
     dirs: bool,
 ) -> Result<Vec<String>, OneIoError> {}
 ```
+
 This includes changes of:
+
 1. `delimiter` changed from `Option<&str>` to `Option<String>`
 2. new `dirs` boolean flag to allow returning only matching directories in the specified prefix
-    - the `delimiter` is also automatically forced to `Some("/".to_string())` if `dirs` is specified and `delimiter` is specified as `None`.
- 
+    - the `delimiter` is also automatically forced to `Some("/".to_string())` if `dirs` is specified and `delimiter` is
+      specified as `None`.
+
 ### Misc
 
 - "cargo publish" process is now automated with GitHub actions
@@ -87,9 +100,12 @@ This includes changes of:
 
 ### Highlights
 
-* Module Refactoring: A dedicated module has been created for remote and utils. (ec80e0236170f13e9eec2450eeaa8334e255a1ee)
-* Improvements in Caching Control: The HTTP caching is now controllable and disabled for CLI requests. (69de57c5f9a7003edecde2fe6641c438abe233a5)
-* Improved Error Handling: We have improved error handling in line reads. The application no longer attempts to read further if a line read fails, preventing any stalls. (fd1352fa2cb701e3fb336a4b6f99014d76d64788)
+* Module Refactoring: A dedicated module has been created for remote and utils.
+  (ec80e0236170f13e9eec2450eeaa8334e255a1ee)
+* Improvements in Caching Control: The HTTP caching is now controllable and disabled for CLI requests. (
+  69de57c5f9a7003edecde2fe6641c438abe233a5)
+* Improved Error Handling: We have improved error handling in line reads. The application no longer attempts to read
+  further if a line read fails, preventing any stalls. (fd1352fa2cb701e3fb336a4b6f99014d76d64788)
 
 ## v0.15.6 - 2023-12-16
 
