@@ -21,10 +21,10 @@ required-features = ["cli"]
 
 [dependencies]
 # remote
-reqwest = { version = "0.11", default-features = false, features = ["blocking"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["blocking"], optional = true }
 
 # compression
-flate2 = { version = "1", default-features = false, features = ["zlib-ng"], optional = true }
+flate2 = { version = "1", optional = true }
 bzip2 = { version = "0.4.4", optional = true }
 lz4 = { version = "1.24", optional = true }
 xz2 = { version = "0.1", optional = true }
