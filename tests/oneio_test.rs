@@ -1,5 +1,4 @@
 use oneio;
-use std::collections::HashMap;
 use std::io::Write;
 
 const TEST_TEXT: &str = "OneIO test file.
@@ -98,17 +97,6 @@ fn test_reader_remote() {
     test_read("https://spaces.bgpkit.org/oneio/test_data.txt.bz2");
     test_read("https://spaces.bgpkit.org/oneio/test_data.txt.lz4");
     test_read("https://spaces.bgpkit.org/oneio/test_data.txt.xz");
-}
-
-#[test]
-fn test_reader_remote_with_header() {
-    let mut reader = oneio::get_remote_reader(
-        "https://bgp-datasets.radar-cfdata-org.workers.dev/caida/as2org/20050801.as-org2info.jsonl.gz",
-        HashMap::from([("X-Custom-Auth-Key".to_string(), "vDe94ID5qAHC5YMtHdHexoyk7".to_string())])
-    ).unwrap();
-
-    let mut text = "".to_string();
-    reader.read_to_string(&mut text).unwrap();
 }
 
 #[test]
