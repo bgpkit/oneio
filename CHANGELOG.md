@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.16.4 -- 2024-03-20
+
+### Hot fix
+
+* add `http2` and `charset` feature flag to `reqwest`
+  * the feature flags for `reqwest` has changed a lot between `0.11` and `0.12` and the `http2` and `charset` features are necessary now
+
 ## v0.16.3 -- 2024-03-20
 
 * switch `flate2` to `rust-backend` default feature as the `zlib-ng` feature requires `cmake` to build and offers no
