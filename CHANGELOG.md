@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.16.3 -- 2024-03-20
+
+* switch `flate2` to `rust-backend` default feature as the `zlib-ng` feature requires `cmake` to build and offers no
+  performance improvement over the `rust-backend` feature
+* update `reqwest` to version `0.12`
+
 ## v0.16.2 -- 2024-02-23
 
 ### Highlights
