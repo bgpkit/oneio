@@ -40,6 +40,10 @@ fn get_remote_http_raw(
         reqwest::header::USER_AGENT,
         reqwest::header::HeaderValue::from_static("oneio"),
     );
+    headers.insert(
+        reqwest::header::CONTENT_LENGTH,
+        reqwest::header::HeaderValue::from_static("0"),
+    );
     #[cfg(feature = "cli")]
     headers.insert(
         reqwest::header::CACHE_CONTROL,
