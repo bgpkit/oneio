@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.16.6 -- 2024-03-26
+
+### Highlights
+
+* make `digest` feature optional and disabled by default
+
 ## v0.16.5 -- 2024-03-20
 
 ### Highlights
