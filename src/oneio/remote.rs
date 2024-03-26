@@ -261,9 +261,7 @@ pub(crate) fn remote_file_exists(path: &str) -> Result<bool, OneIoError> {
                 let res = crate::oneio::s3::s3_exists(bucket.as_str(), path.as_str())?;
                 Ok(res)
             }
-            _ => {
-                return Err(OneIoError::NotSupported(path.to_string()));
-            }
+            _ => Err(OneIoError::NotSupported(path.to_string())),
         },
         None => {
             // check if local file exists
