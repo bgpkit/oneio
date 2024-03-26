@@ -55,12 +55,12 @@ thiserror = "1.0"
 default = ["lib-core", "rustls"]
 
 # library core dependency to enable reading from local/remote with compressions enabled
-lib-core = ["remote", "compressions", "json", "digest"]
+lib-core = ["remote", "compressions", "json"]
 
 # cli dependencies
 cli = [
     # core dependency
-    "lib-core", "rustls", "s3",
+    "lib-core", "rustls", "s3", "digest",
     # CLI specific
     "clap", "tracing",
 ]
