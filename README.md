@@ -5,18 +5,21 @@
 [![Docs.rs](https://docs.rs/oneio/badge.svg)](https://docs.rs/oneio)
 [![License](https://img.shields.io/crates/l/oneio)](https://raw.githubusercontent.com/bgpkit/oneio/main/LICENSE)
 
-OneIO is a Rust library that provides a unified simple IO interface for reading and writing to and from data files from different sources and compressions.
+OneIO is a Rust library that provides a unified simple IO interface for reading and writing to and from data files from
+different sources and compressions.
 
 ## Usage and Feature Flags
 
 Enable all compression algorithms and handle remote files (default)
+
 ```toml
 oneio = "0.16"
 ```
 
 Select from supported feature flags
+
 ```toml
-oneio = {version = "0.16", default-features=false, features = ["remote", "gz"]}
+oneio = { version = "0.16", default-features = false, features = ["remote", "gz"] }
 ```
 
 Default flags include `lib-core` and `rustls`.
@@ -24,9 +27,10 @@ Default flags include `lib-core` and `rustls`.
 ### Core features: `lib-core`
 
 `lib-core` core features include:
+
 - `remote`: allow reading from remote files, including http(s) and ftp
 - `compressions`: compression algorithms
-    - `gz`: support `gzip` files using `libflate` crate
+    - `gz`: support `gzip` files using `flate2` crate
     - `bz`: support `bzip2` files using `bzip2` crate
     - `lz`: support `lz4` files using `lz4` crate
     - `xz`: support `xz` files using `xz2` crate
@@ -40,8 +44,8 @@ Users can choose between `rustls` or `native-tls` as their TLS library. We use `
 
 - `s3`: allow reading from AWS S3 compatible buckets
 - `cli`: build commandline program `oneio`, uses the following features
-  - `lib-core`, `rustls`, `s3` for core functionalities
-  - `clap`, `tracing` for CLI basics
+    - `lib-core`, `rustls`, `s3` for core functionalities
+    - `clap`, `tracing` for CLI basics
 - `digest` for generating SHA256 digest string
 
 ## Use `oneio` commandline tool
@@ -75,18 +79,21 @@ Options:
 
 You can specify a data file location after `oneio`. The following command
 prints out the raw HTML file from <https://bgpkit.com>.
+
 ```bash
 oneio https://bgpkit.com
 ```
 
 Here is another example of using `oneio` to read a remote compressed JSON file,
 pipe it to `jq` and count the number of JSON objects in the array.
+
 ```bash
 $ oneio https://data.bgpkit.com/peer-stats/as2rel-latest.json.bz2 | jq '.|length'  
 802861
 ```
 
 You can also directly download a file with the `--download` (or `-d`) flag.
+
 ```bash
 $ oneio -d https://archive.routeviews.org/route-views.amsix/bgpdata/2022.11/RIBS/rib.20221107.0400.bz2
 file successfully downloaded to rib.20221107.0400.bz2
@@ -101,9 +108,11 @@ A|1667793600|80.249.213.223|267613|0.0.0.0/0|267613 1299|IGP|80.249.213.223|0|0|
 A|1667793600|185.1.167.62|212483|1.0.0.0/24|212483 13335|IGP|152.89.170.244|0|0|13335:10028 13335:19000 13335:20050 13335:20500 13335:20530 lg:212483:1:104|NAG|13335|108.162.243.9
 A|1667793600|80.249.210.28|39120|1.0.0.0/24|39120 13335|IGP|80.249.210.28|0|0|13335:10020 13335:19020 13335:20050 13335:20500 13335:20530|AG|13335|141.101.65.254
 ```
+
 ## Use OneIO Reader as Library
 
 The returned reader implements BufRead, and handles decompression from the following types:
+
 - `gzip`: files ending with `gz` or `gzip`
 - `bzip2`: files ending with `bz` or `bz2`
 - `lz4`: files ending with `lz4` or `lz`
@@ -114,11 +123,12 @@ It also handles reading from remote or local files transparently.
 ### Examples
 
 Read all into string:
+
 ```rust
 const TEST_TEXT: &str = "OneIO test file.
 This is a test.";
-fn main(){
 
+fn main() {
     let mut reader = oneio::get_reader("https://spaces.bgpkit.org/oneio/test_data.txt.gz").unwrap();
 
     let mut text = "".to_string();
@@ -128,8 +138,10 @@ fn main(){
 ```
 
 Read into lines:
+
 ```rust
 use std::io::BufRead;
+
 const TEST_TEXT: &str = "OneIO test file.
 This is a test.";
 
@@ -145,6 +157,7 @@ fn main() {
 ## Use OneIO Writer as a Library
 
 [get_writer] returns a generic writer that implements [Write], and handles decompression from the following types:
+
 - `gzip`: files ending with `gz` or `gzip`
 - `bzip2`: files ending with `bz` or `bz2`
 
@@ -153,6 +166,7 @@ fn main() {
 ### Example
 
 #### Common IO operations
+
 ```rust
 fn main() {
     let to_read_file = "https://spaces.bgpkit.org/oneio/test_data.txt.gz";
@@ -181,6 +195,7 @@ fn main() {
 
 ```rust
 use std::collections::HashMap;
+
 fn main() {
     let mut reader = oneio::get_remote_reader(
         "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
@@ -205,6 +220,7 @@ fn main() {
 ```
 
 #### S3-related operations (needs `s3` feature flag)
+
 ```rust
 fn main() {
     // upload to S3
@@ -244,7 +260,7 @@ fn main() {
         false,
         s3_exists("oneio-test", "test/README-temporary.md").unwrap()
     );
-    
+
     // list S3 files
     let res = s3_list("oneio-test", "test/", Some("/"), false).unwrap();
 
