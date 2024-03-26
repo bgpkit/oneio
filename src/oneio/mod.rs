@@ -1,6 +1,5 @@
-#[cfg(feature = "compressions")]
 mod compressions;
-#[cfg(feature = "compressions")]
+#[allow(unused_imports)]
 use crate::oneio::compressions::OneIOCompression;
 #[cfg(feature = "digest")]
 pub mod digest;
