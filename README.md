@@ -29,11 +29,11 @@ Default flags include `lib-core` and `rustls`.
 `lib-core` core features include:
 
 - `remote`: allow reading from remote files, including http(s) and ftp
-- `compressions`: compression algorithms
+- `compressions`: support all compression algorithms
     - `gz`: support `gzip` files using `flate2` crate
     - `bz`: support `bzip2` files using `bzip2` crate
     - `lz`: support `lz4` files using `lz4` crate
-    - `xz`: support `xz` files using `xz2` crate
+    - `xz`: support `xz` files using `xz2` crate (requires xz library installed on system)
 - `json`: allow reading JSON content into structs with `serde` and `serde_json`
 
 ### TLS choice: `rustls` or `native-tls`
@@ -47,6 +47,15 @@ Users can choose between `rustls` or `native-tls` as their TLS library. We use `
     - `lib-core`, `rustls`, `s3` for core functionalities
     - `clap`, `tracing` for CLI basics
 - `digest` for generating SHA256 digest string
+
+### Selecting some compression algorithms
+
+Users can also manually opt-in to specific compression algorithms. For example, to work with only local `gzip`
+and `bzip2` files:
+
+```toml
+oneio = { version = "0.16", default-features = false, features = ["gz", "bz"] }
+```
 
 ## Use `oneio` commandline tool
 

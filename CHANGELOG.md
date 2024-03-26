@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Highlights
 
+* make `compressions` mod always enabled and allow making all compression algorithms optional
+    * to enable all compression algorithms,
+      use `oneio = { version = "0.16", default-features = false, features = ["compressions"] }`
+    * to enable specific compression algorithms,
+      use `oneio = { version = "0.16", default-features = false, features = ["gz", "bz", "lz", "xz"] }`
+
+## v0.16.6 -- 2024-03-26
+
+### Highlights
+
 * make `digest` feature optional and disabled by default
 
 ## v0.16.5 -- 2024-03-20
