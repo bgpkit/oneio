@@ -33,7 +33,7 @@ Default flags include `lib-core` and `rustls`.
     - `gz`: support `gzip` files using `flate2` crate
     - `bz`: support `bzip2` files using `bzip2` crate
     - `lz`: support `lz4` files using `lz4` crate
-    - `xz`: support `xz` files using `xz2` crate (requires xz library installed on system)
+    - `xz`: support `xz` files using `xz2` crate (requires xz library installed)
 - `json`: allow reading JSON content into structs with `serde` and `serde_json`
 
 ### TLS choice: `rustls` or `native-tls`
@@ -190,7 +190,7 @@ fn main() {
     writer.write_all(text.as_ref()).unwrap();
     drop(writer);
 
-    // read from the newly-generated bz2 file
+    // read from the newly generated bz2 file
     let mut new_text = "".to_string();
     oneio::get_reader(to_write_file).unwrap().read_to_string(&mut new_text).unwrap();
 

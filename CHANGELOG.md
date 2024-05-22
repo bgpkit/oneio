@@ -28,7 +28,7 @@ All notable changes to this project will be documented in this file.
 
 ### Hot fix
 
-* add `http2` and `charset` feature flag to `reqwest`
+* add `http2` and `charset` feature flags to `reqwest`
     * the feature flags for `reqwest` has changed a lot between `0.11` and `0.12` and the `http2` and `charset` features
       are necessary now
 
@@ -64,7 +64,7 @@ assert!(oneio::exists("https://spaces.bgpkit.org/oneio/test_data.json").unwrap()
 ### Breaking changes
 
 - switch to `rustls` as the default TLS backend
-- cleaned up the feature flags
+- clean up the feature flags
     - removed `no-cache` and `vendored-openssl` flags
     - removed `openssl` optional dependency
     - add `digest` feature flag to allow calculating SHA256 digest of a file, enabled by default
@@ -124,7 +124,7 @@ This includes changes of:
 ### Highlights
 
 * Added `vendored-openssl` flag to enable GitHub actions builds for different systems.
-* GitHub releases automatically builds CLI binary for macOS (Universal), and linux (arm and amd64)
+* Automatically builds CLI binary for macOS (Universal), and linux (arm and amd64) during GitHub release
 
 ## v0.15.8-beta.1 - 2023-12-16
 
@@ -138,8 +138,8 @@ This includes changes of:
 
 * Module Refactoring: A dedicated module has been created for remote and utils.
   (ec80e0236170f13e9eec2450eeaa8334e255a1ee)
-* Improvements in Caching Control: The HTTP caching is now controllable and disabled for CLI requests. (
-  69de57c5f9a7003edecde2fe6641c438abe233a5)
+* Improvements in Caching Control: The HTTP caching is now controllable and disabled for CLI requests.
+  (69de57c5f9a7003edecde2fe6641c438abe233a5)
 * Improved Error Handling: We have improved error handling in line reads. The application no longer attempts to read
   further if a line read fails, preventing any stalls. (fd1352fa2cb701e3fb336a4b6f99014d76d64788)
 

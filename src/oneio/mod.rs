@@ -90,7 +90,7 @@ pub fn get_cache_reader(
     cache_file_name: Option<String>,
     force_cache: bool,
 ) -> Result<Box<dyn Read + Send>, OneIoError> {
-    let dir_path = std::path::Path::new(cache_dir);
+    let dir_path = Path::new(cache_dir);
     if !dir_path.is_dir() {
         match std::fs::create_dir_all(dir_path) {
             Ok(_) => {}
@@ -115,7 +115,7 @@ pub fn get_cache_reader(
     let cache_file_path = format!("{}/{}", cache_dir, cache_file_name);
 
     // if cache file already exists
-    if !force_cache && std::path::Path::new(cache_file_path.as_str()).exists() {
+    if !force_cache && Path::new(cache_file_path.as_str()).exists() {
         return get_reader(cache_file_path.as_str());
     }
 
@@ -187,7 +187,7 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
 ///
 /// # Errors
 ///
-/// This function may return an `OneIoError` if there is an error accessing the file system or if the `remote` feature is enabled and there is an error
+/// This function may return a `OneIoError` if there is an error accessing the file system or if the `remote` feature is enabled and there is an error
 pub fn exists(path: &str) -> Result<bool, OneIoError> {
     #[cfg(feature = "remote")]
     return remote::remote_file_exists(path);

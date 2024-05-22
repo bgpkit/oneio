@@ -34,7 +34,7 @@ struct Cli {
     #[clap(long)]
     cache_file: Option<String>,
 
-    /// read through file and only print out stats
+    /// read through the file and only print out stats
     #[clap(short, long)]
     stats: bool,
 

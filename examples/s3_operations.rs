@@ -4,7 +4,7 @@ use tracing::info;
 
 /// This example shows how to upload a file to S3 and read it back.
 ///
-/// You need to set the following environment variables (e.g. in .env):
+/// You need to set the following environment variables (e.g., in .env):
 /// - AWS_ACCESS_KEY_ID
 /// - AWS_SECRET_ACCESS_KEY
 /// - AWS_REGION (e.g. "us-east-1") (use "auto" for Cloudflare R2)

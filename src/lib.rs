@@ -1,8 +1,8 @@
-//! OneIO creates file reader and writer that just works.
+//! OneIO creates readers and writers for files that just works, local or remote, compressed or raw.
 //!
 //! ## Usage and Feature Flags
 //!
-//! Enable all compression algorithms, and handle remote files (default)
+//! Enable all compression algorithms and handle remote files (default)
 //! ```toml
 //! oneio = "0.16"
 //! ```
@@ -94,7 +94,8 @@
 //!
 //! ## Writer
 //!
-//! [get_writer] returns a generic writer that implements [Write], and handles decompression from the following types:
+//! [get_writer] returns a generic writer that implements [std::io::Write],
+//! and handles decompression from the following types:
 //! - `gzip`: files ending with `gz` or `gzip`
 //! - `bzip2`: files ending with `bz` or `bz2`
 //!

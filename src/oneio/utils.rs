@@ -11,7 +11,7 @@ use std::io::{BufRead, BufReader, Lines, Read};
 ///
 /// * `Result<String, OneIoError>` - A `Result` where the `Ok` variant contains
 ///   the contents of the file as a string if the file was successfully read, or
-///   the `Err` variant contains an `OneIoError` if an I/O error occurred.
+///   the `Err` variant contains a `OneIoError` if an I/O error occurred.
 ///
 /// # Examples
 ///
@@ -61,7 +61,7 @@ pub fn read_json_struct<T: serde::de::DeserializeOwned>(path: &str) -> Result<T,
 ///
 /// # Returns
 ///
-/// A `Result` containing a `Lines` iterator of `String` lines or an `OneIoError` indicating the error.
+/// A `Result` containing a `Lines` iterator of `String` lines or a `OneIoError` indicating the error.
 ///
 /// # Example
 ///

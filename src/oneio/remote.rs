@@ -58,7 +58,7 @@ fn get_remote_http_raw(
     Ok(res)
 }
 
-/// get a reader for remote content with the capability to specify headers.
+/// Get a reader for remote content with the capability to specify headers.
 ///
 /// Example usage:
 /// ```no_run
@@ -243,8 +243,8 @@ pub(crate) fn get_reader_raw_remote(path: &str) -> Result<Box<dyn Read + Send>, 
 /// # Returns
 ///
 /// Returns a `Result` containing a `bool` indicating whether the file exists or not. If the path is not supported,
-/// an `Err` variant with an `OneIoError::NotSupported` error is returned. If there is an error during the file check,
-/// an `Err` variant with an `OneIoError` is returned.
+/// an `Err` variant with a `OneIoError::NotSupported` error is returned. If there is an error during the file check,
+/// an `Err` variant with a `OneIoError` is returned.
 pub(crate) fn remote_file_exists(path: &str) -> Result<bool, OneIoError> {
     match get_protocol(path) {
         Some(protocol) => match protocol.as_str() {

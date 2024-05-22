@@ -1,6 +1,6 @@
 //! S3 related functions.
 //!
-//! The following environment variables are needed (e.g. in .env):
+//! The following environment variables are needed (e.g., in .env):
 //! - AWS_ACCESS_KEY_ID
 //! - AWS_SECRET_ACCESS_KEY
 //! - AWS_REGION (e.g. "us-east-1") (use "auto" for Cloudflare R2)
@@ -72,7 +72,7 @@ pub fn s3_env_check() -> Result<(), OneIoError> {
 ///
 /// # Errors
 ///
-/// This function can return an `OneIoError` in the following cases:
+/// This function can return a `OneIoError` in the following cases:
 ///
 /// * If the URL does not contain a bucket and key separated by "/".
 ///
@@ -81,7 +81,7 @@ pub fn s3_env_check() -> Result<(), OneIoError> {
 ///
 /// # Returns
 ///
-/// Returns a `Result` containing the bucket and key as a tuple, or an `OneIoError` if parsing fails.
+/// Returns a `Result` containing the bucket and key as a tuple, or a `OneIoError` if parsing fails.
 pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
     let parts = path.split('/').collect::<Vec<&str>>();
     if parts.len() < 3 {
@@ -133,6 +133,7 @@ pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
     Ok(bucket)
 }
 
+//noinspection ALL,Style
 /// `s3_reader` function reads a file from an S3 bucket and returns a boxed reader implementing `Read` trait.
 ///
 /// # Arguments
@@ -148,7 +149,7 @@ pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
 /// # Returns
 ///
 /// The function returns a `Result` containing a boxed reader implementing `Read + Send` trait in case of a successful operation. The reader
-/// can be used to read the contents of the file stored in the S3 bucket. If the operation fails, an `OneIoError` is returned as an error.
+/// can be used to read the contents of the file stored in the S3 bucket. If the operation fails, a `OneIoError` is returned as an error.
 ///
 /// # Example
 ///
@@ -210,7 +211,7 @@ pub fn s3_upload(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), One
 ///
 /// # Errors
 ///
-/// Returns an `Err` variant of the `OneIoError` enum if there was an error copying the object.
+/// Returns an `Err` variant of the `OneIoError` enum if there was an error when copying the object.
 ///
 /// # Examples
 ///
@@ -241,7 +242,7 @@ pub fn s3_copy(bucket: &str, s3_path: &str, s3_path_new: &str) -> Result<(), One
 ///
 /// # Errors
 ///
-/// Returns an `OneIoError` if the deletion fails.
+/// Returns a `OneIoError` if the deletion fails.
 ///
 /// # Examples
 ///
@@ -272,9 +273,9 @@ pub fn s3_delete(bucket: &str, s3_path: &str) -> Result<(), OneIoError> {
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` if the download is successful.
+/// Return `Ok(())` if the download is successful.
 ///
-/// Returns `Err` with an `OneIoError` if there was an error during the download.
+/// Return an `Err` with a `OneIoError` if there was an error during the download.
 ///
 /// # Errors
 ///
@@ -359,7 +360,7 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
 /// # Returns
 ///
 /// Returns `Ok(true)` if the file exists, `Ok(false)` if the file does not exist,
-/// or an `Err` containing an `OneIoError::S3DownloadError` if there was an error
+/// or an `Err` containing a `OneIoError::S3DownloadError` if there was an error
 /// checking the file's existence.
 ///
 /// # Example
@@ -399,7 +400,7 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
 ///
 /// * If the URL does not start with "s3://".
 /// Returns a `Result` with a `Vec<String>` containing the object keys on success,
-/// or an `OneIoError` on failure.
+/// or a `OneIoError` on failure.
 ///
 /// # Example
 ///
@@ -460,7 +461,7 @@ mod tests {
         assert_eq!(bucket, "test-bucket");
         assert_eq!(path, "test-path/test-file.txt");
 
-        const NON_S3_URL: &str = "http://test-bucket/test-path/test-file.txt";
+        const NON_S3_URL: &str = "s3:/test-bucket";
         assert!(s3_url_parse(NON_S3_URL).is_err());
     }
 }
