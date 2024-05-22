@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.16.7"
+version = "0.16.8"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"

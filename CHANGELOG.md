@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.16.8 -- 2024-05-22
+
+### Highlights
+
+* `s3_url_parse` allow parsing different protocols like `r2://` or `b2://`
+    * previously, if the URL did not start with `s3://` it would return an error
+
 ## v0.16.7 -- 2024-03-26
 
 ### Highlights
