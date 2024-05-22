@@ -74,7 +74,6 @@ pub fn s3_env_check() -> Result<(), OneIoError> {
 ///
 /// This function can return an `OneIoError` in the following cases:
 ///
-/// * If the URL does not start with "s3://".
 /// * If the URL does not contain a bucket and key separated by "/".
 ///
 /// In case of error, the `OneIoError` variant `S3UrlError` will be returned,
@@ -84,9 +83,6 @@ pub fn s3_env_check() -> Result<(), OneIoError> {
 ///
 /// Returns a `Result` containing the bucket and key as a tuple, or an `OneIoError` if parsing fails.
 pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
-    if !path.starts_with("s3://") {
-        return Err(OneIoError::S3UrlError(path.to_string()));
-    }
     let parts = path.split('/').collect::<Vec<&str>>();
     if parts.len() < 3 {
         return Err(OneIoError::S3UrlError(path.to_string()));
@@ -401,6 +397,7 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
 ///
 /// # Returns
 ///
+/// * If the URL does not start with "s3://".
 /// Returns a `Result` with a `Vec<String>` containing the object keys on success,
 /// or an `OneIoError` on failure.
 ///
