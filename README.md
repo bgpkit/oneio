@@ -204,11 +204,20 @@ fn main() {
 
 ```rust
 use std::collections::HashMap;
+use std::collections::HashMap;
+use reqwest::header::HeaderMap;
 
 fn main() {
-    let mut reader = oneio::get_remote_reader(
+    let headers: HeaderMap = (&HashMap::from([("X-Custom-Auth-Key".to_string(), "TOKEN".to_string())]))
+        .try_into().expect("invalid headers");
+
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .danger_accept_invalid_certs(true)
+        .build().unwrap();
+    let mut reader = oneio::get_http_reader(
         "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
-        HashMap::from([("X-Custom-Auth-Key".to_string(), "TOKEN".to_string())])
+        Some(client),
     ).unwrap();
     let mut text = "".to_string();
     reader.read_to_string(&mut text).unwrap();
