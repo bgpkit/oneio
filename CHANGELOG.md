@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.17.0-beta.1 -- 2024-06-04
+
+### Highlights
+
+* revised custom HTTP request function `oneio::get_http_reader` to allow specifying custom `request::blocking::Client`
+  for any request customizations to allow specifying custom `request::blocking::Client` for any request customizations.
+
+### Breaking changes
+
+1. rename `oneio::get_remote_reader` to `oneio::get_http_reader`
+2. rename `get_remote_ftp_raw` to `get_ftp_reader_raw`
+3. change signatures of `oneio::download`, `oneio::download_with_retry`, `oneio::get_http_reader`'s optional HashMap
+   parameter for headers to optional `reqwest::blocking::Client`.
+
 ## v0.16.8 -- 2024-05-22
 
 ### Highlights

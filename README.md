@@ -13,13 +13,13 @@ different sources and compressions.
 Enable all compression algorithms and handle remote files (default)
 
 ```toml
-oneio = "0.16"
+oneio = "0.17.0-beta"
 ```
 
 Select from supported feature flags
 
 ```toml
-oneio = { version = "0.16", default-features = false, features = ["remote", "gz"] }
+oneio = { version = "0.17.0-beta", default-features = false, features = ["remote", "gz"] }
 ```
 
 Default flags include `lib-core` and `rustls`.
