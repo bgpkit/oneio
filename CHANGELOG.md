@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.16.9 -- 2024-07-16
+
+### Highlights
+
+* change S3 credentials initiation from using `from_env()` to `new(...)` to allow getting credentials from additional
+  sources (not a breaking change)
+
 ## v0.16.8 -- 2024-05-22
 
 ### Highlights
