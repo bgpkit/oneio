@@ -127,7 +127,7 @@ pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
     let mut bucket = Bucket::new(
         bucket,
         Region::from_default_env()?,
-        Credentials::from_env()?,
+        Credentials::new(None, None, None, None, None)?,
     )?;
     bucket.set_request_timeout(Some(std::time::Duration::from_secs(10 * 60)));
     Ok(bucket)
