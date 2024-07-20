@@ -34,6 +34,7 @@ Default flags include `lib-core` and `rustls`.
     - `bz`: support `bzip2` files using `bzip2` crate
     - `lz`: support `lz4` files using `lz4` crate
     - `xz`: support `xz` files using `xz2` crate (requires xz library installed)
+    - `zstd: support `zst` files using `zstd` crate
 - `json`: allow reading JSON content into structs with `serde` and `serde_json`
 
 ### TLS choice: `rustls` or `native-tls`
@@ -126,6 +127,7 @@ The returned reader implements BufRead, and handles decompression from the follo
 - `bzip2`: files ending with `bz` or `bz2`
 - `lz4`: files ending with `lz4` or `lz`
 - `xz`: files ending with `xz` or `xz2`
+- `zstd`: files ending with `zst` or `zstd`
 
 It also handles reading from remote or local files transparently.
 

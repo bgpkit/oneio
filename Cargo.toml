@@ -21,13 +21,18 @@ required-features = ["cli"]
 
 [dependencies]
 # remote
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "http2", "charset"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "http2",
+    "charset",
+], optional = true }
 
 # compression
 flate2 = { version = "1", optional = true }
 bzip2 = { version = "0.4.4", optional = true }
 lz4 = { version = "1.24", optional = true }
 xz2 = { version = "0.1", optional = true }
+zstd = { version = "0.13.2", optional = true }
 
 # sha256
 ring = { version = "0.17", optional = true }
@@ -42,7 +47,9 @@ serde = { version = "1.0", optional = true }
 serde_json = { version = "1.0", optional = true }
 
 # s3
-rust-s3 = { version = "0.34.0-rc4", optional = true, default-features = false, features = ["sync"] }
+rust-s3 = { version = "0.34.0-rc4", optional = true, default-features = false, features = [
+    "sync",
+] }
 dotenvy = { version = "0.15", optional = true }
 
 # ftp
@@ -60,23 +67,32 @@ lib-core = ["remote", "compressions", "json"]
 # cli dependencies
 cli = [
     # core dependency
-    "lib-core", "rustls", "s3", "digest",
+    "lib-core",
+    "rustls",
+    "s3",
+    "digest",
     # CLI specific
-    "clap", "tracing",
+    "clap",
+    "tracing",
 ]
 
 # optional flags to select native-tls or rust-tls
-native-tls = ["reqwest?/default-tls", "suppaftp?/native-tls", "rust-s3?/sync-native-tls"]
+native-tls = [
+    "reqwest?/default-tls",
+    "suppaftp?/native-tls",
+    "rust-s3?/sync-native-tls",
+]
 rustls = ["reqwest?/rustls-tls", "suppaftp?/rustls", "rust-s3?/sync-rustls-tls"]
 
 digest = ["ring", "hex"]
 
 # supported compression algorithms, which can be toggled on/off individually
-compressions = ["gz", "bz", "lz", "xz"]
+compressions = ["gz", "bz", "lz", "xz", "zstd"]
 gz = ["flate2"]
 bz = ["bzip2"]
 lz = ["lz4"]
 xz = ["xz2"]
+zstd = ["dep:zstd"]
 
 remote = ["reqwest", "suppaftp"]
 json = ["serde", "serde_json"]
