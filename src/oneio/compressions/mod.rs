@@ -10,6 +10,8 @@ pub(crate) mod gzip;
 pub(crate) mod lz4;
 #[cfg(feature = "xz")]
 pub(crate) mod xz;
+#[cfg(feature = "zstd")]
+pub(crate) mod zstd;
 
 pub trait OneIOCompression {
     fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError>;

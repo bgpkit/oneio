@@ -88,6 +88,7 @@ fn test_reader_local() {
     test_read("tests/test_data.txt.bz2");
     test_read("tests/test_data.txt.lz4");
     test_read("tests/test_data.txt.xz");
+    test_read("tests/test_data.txt.zst");
 }
 
 #[test]
@@ -104,6 +105,7 @@ fn test_writer() {
     test_write("tests/test_write_data.txt", "tests/test_data.txt");
     test_write("tests/test_write_data.txt.gz", "tests/test_data.txt.gz");
     test_write("tests/test_write_data.txt.bz2", "tests/test_data.txt.bz2");
+    test_write("tests/test_write_data.txt.zst", "tests/test_data.txt.zst");
     // lz4 writer is not currently supported
 }
 
