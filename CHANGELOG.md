@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.17.0-beta.2 -- 2024-07-22
+
+### Highlights
+
+* add support for `zstd` (zstandard) compression
+* allow setting `ONEIO_ACCEPT_INVALID_CERTS=true` to disable SSL checking
+
 ## v0.17.0-beta.1 -- 2024-06-04
 
 ### Highlights

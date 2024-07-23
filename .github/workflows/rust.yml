@@ -39,5 +39,8 @@ jobs:
       - name: Run test for lib + all optionals features
         run: cargo test --all-features
 
+      - name: Run clippy for all features
+        run: cargo clippy --all-features -- -D warnings
+
       - name: Run format check
         run: cargo fmt --check
