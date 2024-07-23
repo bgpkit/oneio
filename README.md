@@ -41,6 +41,9 @@ Default flags include `lib-core` and `rustls`.
 
 Users can choose between `rustls` or `native-tls` as their TLS library. We use `rustls` as the basic library.
 
+Users can also choose to accept invalid certificates (not recommending) by setting `ONEIO_ACCEPT_INVALID_CERTS=true`
+environment variable.
+
 ### Optional features: `cli`, `s3`, `digest`
 
 - `s3`: allow reading from AWS S3 compatible buckets
