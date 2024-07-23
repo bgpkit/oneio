@@ -34,7 +34,7 @@ Default flags include `lib-core` and `rustls`.
     - `bz`: support `bzip2` files using `bzip2` crate
     - `lz`: support `lz4` files using `lz4` crate
     - `xz`: support `xz` files using `xz2` crate (requires xz library installed)
-    - `zstd: support `zst` files using `zstd` crate
+    - `zstd`: support `zst` files using `zstd` crate
 - `json`: allow reading JSON content into structs with `serde` and `serde_json`
 
 ### TLS choice: `rustls` or `native-tls`
