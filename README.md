@@ -1,30 +1,29 @@
-# OneIO
+# OneIO - all-in-one convenient IO library for Rust
 
 [![Rust](https://github.com/bgpkit/oneio/actions/workflows/rust.yml/badge.svg)](https://github.com/bgpkit/oneio/actions/workflows/rust.yml)
 [![Crates.io](https://img.shields.io/crates/v/oneio)](https://crates.io/crates/oneio)
 [![Docs.rs](https://docs.rs/oneio/badge.svg)](https://docs.rs/oneio)
 [![License](https://img.shields.io/crates/l/oneio)](https://raw.githubusercontent.com/bgpkit/oneio/main/LICENSE)
 
-OneIO is a Rust library that provides a unified simple IO interface for reading and writing to and from data files from
-different sources and compressions.
+OneIO is a Rust library that provides a unified simple IO interface for reading and writing to and from data files from different sources and compressions.
 
-## Usage and Feature Flags
+### Usage and Feature Flags
 
 Enable all compression algorithms and handle remote files (default)
 
 ```toml
-oneio = "0.17.0-beta"
+oneio = "0.17"
 ```
 
 Select from supported feature flags
 
 ```toml
-oneio = { version = "0.17.0-beta", default-features = false, features = ["remote", "gz"] }
+oneio = { version = "0.17", default-features = false, features = ["remote", "gz"] }
 ```
 
 Default flags include `lib-core` and `rustls`.
 
-### Core features: `lib-core`
+#### Core features: `lib-core`
 
 `lib-core` core features include:
 
@@ -37,14 +36,14 @@ Default flags include `lib-core` and `rustls`.
     - `zstd`: support `zst` files using `zstd` crate
 - `json`: allow reading JSON content into structs with `serde` and `serde_json`
 
-### TLS choice: `rustls` or `native-tls`
+#### TLS choice: `rustls` or `native-tls`
 
 Users can choose between `rustls` or `native-tls` as their TLS library. We use `rustls` as the basic library.
 
 Users can also choose to accept invalid certificates (not recommending) by setting `ONEIO_ACCEPT_INVALID_CERTS=true`
 environment variable.
 
-### Optional features: `cli`, `s3`, `digest`
+#### Optional features: `cli`, `s3`, `digest`
 
 - `s3`: allow reading from AWS S3 compatible buckets
 - `cli`: build commandline program `oneio`, uses the following features
@@ -52,29 +51,30 @@ environment variable.
     - `clap`, `tracing` for CLI basics
 - `digest` for generating SHA256 digest string
 
-### Selecting some compression algorithms
+#### Selecting some compression algorithms
 
 Users can also manually opt-in to specific compression algorithms. For example, to work with only local `gzip`
 and `bzip2` files:
 
 ```toml
-oneio = { version = "0.16", default-features = false, features = ["gz", "bz"] }
+oneio = { version = "0.17", default-features = false, features = ["gz", "bz"] }
 ```
 
-## Use `oneio` commandline tool
+### Use `oneio` commandline tool
 
 OneIO comes with a commandline tool, `oneio`, that opens and reads local/remote files
 to terminal and handles decompression automatically. This can be useful if you want to
 read some compressed plain-text files from a local or remote source.
 
-```text
-oneio attempts to read files from local or remote locations with any compression
+```
+oneio reads files from local or remote locations with any compression
 
 Usage: oneio [OPTIONS] [FILE] [COMMAND]
 
 Commands:
-  s3    S3-related subcommands
-  help  Print this message or the help of the given subcommand(s)
+  s3      S3-related subcommands
+  digest  Generate SHA256 digest
+  help    Print this message or the help of the given subcommand(s)
 
 Arguments:
   [FILE]  file to open, remote or local
@@ -85,7 +85,7 @@ Options:
       --cache-dir <CACHE_DIR>    cache reading to specified directory
       --cache-force              force re-caching if local cache already exists
       --cache-file <CACHE_FILE>  specify cache file name
-  -s, --stats                    read through file and only print out stats
+  -s, --stats                    read through the file and only print out stats
   -h, --help                     Print help
   -V, --version                  Print version
 ```
@@ -101,7 +101,7 @@ Here is another example of using `oneio` to read a remote compressed JSON file,
 pipe it to `jq` and count the number of JSON objects in the array.
 
 ```bash
-$ oneio https://data.bgpkit.com/peer-stats/as2rel-latest.json.bz2 | jq '.|length'  
+$ oneio https://data.bgpkit.com/peer-stats/as2rel-latest.json.bz2 | jq '.|length'
 802861
 ```
 
@@ -111,7 +111,7 @@ You can also directly download a file with the `--download` (or `-d`) flag.
 $ oneio -d https://archive.routeviews.org/route-views.amsix/bgpdata/2022.11/RIBS/rib.20221107.0400.bz2
 file successfully downloaded to rib.20221107.0400.bz2
 
-$ ls -lh rib.20221107.0400.bz2 
+$ ls -lh rib.20221107.0400.bz2
 -rw-r--r--  1 mingwei  staff   122M Nov  7 16:17 rib.20221107.0400.bz2
 
 $ monocle parse rib.20221107.0400.bz2 |head -n5
@@ -122,7 +122,7 @@ A|1667793600|185.1.167.62|212483|1.0.0.0/24|212483 13335|IGP|152.89.170.244|0|0|
 A|1667793600|80.249.210.28|39120|1.0.0.0/24|39120 13335|IGP|80.249.210.28|0|0|13335:10020 13335:19020 13335:20050 13335:20500 13335:20530|AG|13335|141.101.65.254
 ```
 
-## Use OneIO Reader as Library
+### Use OneIO Reader as a Library
 
 The returned reader implements BufRead, and handles decompression from the following types:
 
@@ -134,7 +134,7 @@ The returned reader implements BufRead, and handles decompression from the follo
 
 It also handles reading from remote or local files transparently.
 
-### Examples
+#### Examples
 
 Read all into string:
 
@@ -142,13 +142,10 @@ Read all into string:
 const TEST_TEXT: &str = "OneIO test file.
 This is a test.";
 
-fn main() {
-    let mut reader = oneio::get_reader("https://spaces.bgpkit.org/oneio/test_data.txt.gz").unwrap();
-
-    let mut text = "".to_string();
-    reader.read_to_string(&mut text).unwrap();
-    assert_eq!(text.as_str(), TEST_TEXT);
-}
+let mut reader = oneio::get_reader("https://spaces.bgpkit.org/oneio/test_data.txt.gz").unwrap();
+let mut text = "".to_string();
+reader.read_to_string(&mut text).unwrap();
+assert_eq!(text.as_str(), TEST_TEXT);
 ```
 
 Read into lines:
@@ -159,16 +156,14 @@ use std::io::BufRead;
 const TEST_TEXT: &str = "OneIO test file.
 This is a test.";
 
-fn main() {
-    let lines = oneio::read_lines("https://spaces.bgpkit.org/oneio/test_data.txt.gz").map(|line| line.unwrap()).collect::<Vec<String>>();
-
-    assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0].as_str(), "OneIO test file.");
-    assert_eq!(lines[1].as_str(), "This is a test.");
-}
+let lines = oneio::read_lines("https://spaces.bgpkit.org/oneio/test_data.txt.gz").unwrap()
+.map(|line| line.unwrap()).collect::<Vec<String>>();
+assert_eq!(lines.len(), 2);
+assert_eq!(lines[0].as_str(), "OneIO test file.");
+assert_eq!(lines[1].as_str(), "This is a test.");
 ```
 
-## Use OneIO Writer as a Library
+### Use OneIO Writer as a Library
 
 [get_writer] returns a generic writer that implements [Write], and handles decompression from the following types:
 
@@ -177,9 +172,9 @@ fn main() {
 
 **Note: lz4 writer is not currently supported.**
 
-### Example
+#### Example
 
-#### Common IO operations
+##### Common IO operations
 
 ```rust
 fn main() {
@@ -205,92 +200,95 @@ fn main() {
 }
 ```
 
-#### Read remote content with custom headers
+##### Read remote content with custom headers
 
 ```rust
-use std::collections::HashMap;
 use std::collections::HashMap;
 use reqwest::header::HeaderMap;
 
-fn main() {
-    let headers: HeaderMap = (&HashMap::from([("X-Custom-Auth-Key".to_string(), "TOKEN".to_string())]))
-        .try_into().expect("invalid headers");
+let headers: HeaderMap = (&HashMap::from([("X-Custom-Auth-Key".to_string(), "TOKEN".to_string())]))
+    .try_into().expect("invalid headers");
 
-    let client = reqwest::blocking::Client::builder()
-        .default_headers(headers)
-        .danger_accept_invalid_certs(true)
-        .build().unwrap();
-    let mut reader = oneio::get_http_reader(
-        "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
-        Some(client),
-    ).unwrap();
-    let mut text = "".to_string();
-    reader.read_to_string(&mut text).unwrap();
-    println!("{}", text);
-}
+let client = reqwest::blocking::Client::builder()
+    .default_headers(headers)
+    .danger_accept_invalid_certs(true)
+    .build().unwrap();
+let mut reader = oneio::get_http_reader(
+    "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
+    Some(client),
+).unwrap();
+let mut text = "".to_string();
+reader.read_to_string(&mut text).unwrap();
+println!("{}", text);
 ```
 
-#### Download remote file to local directory
+##### Download remote file to local directory
 
 ```rust
-fn main() {
-    oneio::download(
-        "https://data.ris.ripe.net/rrc18/2022.11/updates.20221107.2325.gz",
-        "updates.gz",
-        None
-    ).unwrap();
-}
+oneio::download(
+    "https://data.ris.ripe.net/rrc18/2022.11/updates.20221107.2325.gz",
+    "updates.gz",
+    None
+).unwrap();
 ```
 
-#### S3-related operations (needs `s3` feature flag)
+##### S3-related operations (needs `s3` feature flag)
 
 ```rust
-fn main() {
-    // upload to S3
-    s3_upload("oneio-test", "test/README.md", "README.md").unwrap();
+use oneio::s3::*;
 
-    // read directly from S3
-    let mut content = String::new();
-    s3_reader("oneio-test", "test/README.md")
-        .unwrap()
-        .read_to_string(&mut content)
-        .unwrap();
-    println!("{}", content);
+// upload to S3
+s3_upload("oneio-test", "test/README.md", "README.md").unwrap();
 
-    // download from S3
-    s3_download("oneio-test", "test/README.md", "test/README-2.md").unwrap();
+// read directly from S3
+let mut content = String::new();
+s3_reader("oneio-test", "test/README.md")
+    .unwrap()
+    .read_to_string(&mut content)
+    .unwrap();
+println!("{}", content);
 
-    // get S3 file stats
-    let res = s3_stats("oneio-test", "test/README.md").unwrap();
-    dbg!(res);
+// download from S3
+s3_download("oneio-test", "test/README.md", "test/README-2.md").unwrap();
 
-    // error if file does not exist
-    let res = s3_stats("oneio-test", "test/README___NON_EXISTS.md");
-    assert!(res.is_err());
+// get S3 file stats
+let res = s3_stats("oneio-test", "test/README.md").unwrap();
+dbg!(res);
 
-    // copy S3 file to a different location
-    let res = s3_copy("oneio-test", "test/README.md", "test/README-temporary.md");
-    assert!(res.is_ok());
-    assert_eq!(
-        true,
-        s3_exists("oneio-test", "test/README-temporary.md").unwrap()
-    );
+// error if file does not exist
+let res = s3_stats("oneio-test", "test/README___NON_EXISTS.md");
+assert!(res.is_err());
 
-    // delete temporary copied S3 file
-    let res = s3_delete("oneio-test", "test/README-temporary.md");
-    assert!(res.is_ok());
-    assert_eq!(
-        false,
-        s3_exists("oneio-test", "test/README-temporary.md").unwrap()
-    );
+// copy S3 file to a different location
+let res = s3_copy("oneio-test", "test/README.md", "test/README-temporary.md");
+assert!(res.is_ok());
+assert_eq!(
+    true,
+    s3_exists("oneio-test", "test/README-temporary.md").unwrap()
+);
 
-    // list S3 files
-    let res = s3_list("oneio-test", "test/", Some("/"), false).unwrap();
+// delete temporary copied S3 file
+let res = s3_delete("oneio-test", "test/README-temporary.md");
+assert!(res.is_ok());
+assert_eq!(
+    false,
+    s3_exists("oneio-test", "test/README-temporary.md").unwrap()
+);
 
-    assert_eq!(
-        false,
-        s3_exists("oneio-test", "test/README___NON_EXISTS.md").unwrap()
-    );
-    assert_eq!(true, s3_exists("oneio-test", "test/README.md").unwrap());
-}
+// list S3 files
+let res = s3_list("oneio-test", "test/", Some("/".to_string()), false).unwrap();
+
+assert_eq!(
+    false,
+    s3_exists("oneio-test", "test/README___NON_EXISTS.md").unwrap()
+);
+assert_eq!(true, s3_exists("oneio-test", "test/README.md").unwrap());
 ```
+
+## Built with ❤️ by BGPKIT Team
+
+<a href="https://bgpkit.com"><img src="https://bgpkit.com/Original%20Logo%20Cropped.png" alt="https://bgpkit.com/favicon.ico" width="200"/></a>
+
+## License
+
+MIT
