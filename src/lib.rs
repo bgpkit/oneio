@@ -171,27 +171,25 @@ assert_eq!(lines[1].as_str(), "This is a test.");
 #### Common IO operations
 
 ```rust,no_run
-fn main() {
-    let to_read_file = "https://spaces.bgpkit.org/oneio/test_data.txt.gz";
-    let to_write_file = "/tmp/test_write.txt.bz2";
+let to_read_file = "https://spaces.bgpkit.org/oneio/test_data.txt.gz";
+let to_write_file = "/tmp/test_write.txt.bz2";
 
-    // read text from remote gzip file
-    let mut text = "".to_string();
-    oneio::get_reader(to_read_file).unwrap().read_to_string(&mut text).unwrap();
+// read text from remote gzip file
+let mut text = "".to_string();
+oneio::get_reader(to_read_file).unwrap().read_to_string(&mut text).unwrap();
 
-    // write the same text to a local bz2 file
-    let mut writer = oneio::get_writer(to_write_file).unwrap();
-    writer.write_all(text.as_ref()).unwrap();
-    drop(writer);
+// write the same text to a local bz2 file
+let mut writer = oneio::get_writer(to_write_file).unwrap();
+writer.write_all(text.as_ref()).unwrap();
+drop(writer);
 
-    // read from the newly generated bz2 file
-    let mut new_text = "".to_string();
-    oneio::get_reader(to_write_file).unwrap().read_to_string(&mut new_text).unwrap();
+// read from the newly generated bz2 file
+let mut new_text = "".to_string();
+oneio::get_reader(to_write_file).unwrap().read_to_string(&mut new_text).unwrap();
 
-    // compare the decompressed content of the remote and local files
-    assert_eq!(text.as_str(), new_text.as_str());
-    std::fs::remove_file(to_write_file).unwrap();
-}
+// compare the decompressed content of the remote and local files
+assert_eq!(text.as_str(), new_text.as_str());
+std::fs::remove_file(to_write_file).unwrap();
 ```
 
 #### Read remote content with custom headers

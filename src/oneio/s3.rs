@@ -103,8 +103,7 @@ pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
 /// This function can return a `OneIoError` if any of the following conditions occur:
 ///
 /// * Failed to load the environment variables from the .env file.
-/// * Failed to create a new `Bucket` object with the given `bucket` name, `Region`,
-/// and `Credentials`.
+/// * Failed to create a new `Bucket` object with the given `bucket` name, `Region`, and `Credentials`.
 ///
 /// # Examples
 ///
@@ -398,9 +397,7 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
 ///
 /// # Returns
 ///
-/// * If the URL does not start with "s3://".
-/// Returns a `Result` with a `Vec<String>` containing the object keys on success,
-/// or a `OneIoError` on failure.
+/// * If the URL does not start with "s3://". Returns a `Result` with a `Vec<String>` containing the object keys on success, or a `OneIoError` on failure.
 ///
 /// # Example
 ///
