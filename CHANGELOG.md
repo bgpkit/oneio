@@ -2,17 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.17.0-beta.2 -- 2024-07-22
+## v0.17.0 -- 2024-08-04
 
 ### Highlights
 
 * add support for `zstd` (zstandard) compression
 * allow setting `ONEIO_ACCEPT_INVALID_CERTS=true` to disable SSL checking
-
-## v0.17.0-beta.1 -- 2024-06-04
-
-### Highlights
-
 * revised custom HTTP request function `oneio::get_http_reader` to allow specifying custom `request::blocking::Client`
   for any request customizations to allow specifying custom `request::blocking::Client` for any request customizations.
 
