@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.17.0"
+version = "0.18.0"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -43,6 +43,7 @@ zstd = { version = "0.13.2", optional = true }
 # feature: digest
 ring = { version = "0.17", optional = true }
 hex = { version = "0.4", optional = true }
+rustls_sys = { package = "rustls", version = "0.23", optional = true }
 
 # feature: json
 serde = { version = "1.0", optional = true }
@@ -64,6 +65,12 @@ default = ["lib-core", "rustls"]
 
 # library core dependency to enable reading from local/remote with compressions enabled
 lib-core = ["remote", "compressions", "json"]
+
+# remote IO features
+remote = ["http", "ftp"]
+http = ["reqwest"]
+ftp = ["suppaftp"]
+
 # cli dependencies
 cli = [
     # core dependency
@@ -82,7 +89,12 @@ native-tls = [
     "suppaftp?/native-tls",
     "rust-s3?/sync-native-tls",
 ]
-rustls = ["reqwest?/rustls-tls", "suppaftp?/rustls", "rust-s3?/sync-rustls-tls"]
+rustls = [
+    "reqwest?/rustls-tls",
+    "suppaftp?/rustls",
+    "rust-s3?/sync-rustls-tls",
+    "rustls_sys"
+]
 
 digest = ["ring", "hex"]
 
@@ -94,7 +106,6 @@ lz = ["lz4"]
 xz = ["xz2"]
 zstd = ["dep:zstd"]
 
-remote = ["reqwest", "suppaftp"]
 json = ["serde", "serde_json"]
 
 # s3 support, off by default

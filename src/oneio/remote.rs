@@ -1,3 +1,6 @@
+//! This module provides functionality to handle remote file operations such as downloading files
+//! from HTTP, FTP, and S3 protocols.
+//!
 use crate::oneio::compressions::OneIOCompression;
 use crate::oneio::{compressions, get_writer_raw};
 use crate::OneIoError;
@@ -43,6 +46,10 @@ fn get_http_reader_raw(
             .as_str(),
         "true" | "yes" | "y" | "1"
     );
+    #[cfg(feature = "rustls")]
+    rustls_sys::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .ok();
 
     let client = match opt_client {
         Some(c) => c,
@@ -73,16 +80,24 @@ fn get_http_reader_raw(
     Ok(res)
 }
 
-/// Get a reader for remote content with the capability to specify headers, and customer reqwest options.
+/// Creates a reqwest blocking client with custom headers.
+///
+/// # Arguments
+///
+/// * `headers_map` - A argument of header key-value pairs.
+///
+/// # Returns
+///
+/// Returns a Result containing the constructed Client or a [OneIoError].
+///
+/// # Example
 ///
 /// Example usage with custom header fields:
 /// ```no_run
 /// use std::collections::HashMap;
 /// use reqwest::header::HeaderMap;
-/// let headers: HeaderMap = (&HashMap::from([("X-Custom-Auth-Key".to_string(), "TOKEN".to_string())])).try_into().expect("invalid headers");
-/// let client = reqwest::blocking::Client::builder()
-///        .default_headers(headers)
-///        .build().unwrap();
+///
+/// let client = oneio::create_client_with_headers([("X-Custom-Auth-Key", "TOKEN")]).unwrap();
 /// let mut reader = oneio::get_http_reader(
 ///   "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
 ///   Some(client),
@@ -91,6 +106,28 @@ fn get_http_reader_raw(
 /// reader.read_to_string(&mut text).unwrap();
 /// println!("{}", text);
 /// ```
+pub fn create_client_with_headers<I, K, V>(headers: I) -> Result<Client, OneIoError>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: Into<String>,
+    V: Into<String>,
+{
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    let mut header_map = HeaderMap::new();
+    for (k, v) in headers {
+        if let (Ok(name), Ok(value)) = (
+            HeaderName::from_bytes(k.into().as_bytes()),
+            HeaderValue::from_str(&v.into()),
+        ) {
+            header_map.insert(name, value);
+        }
+    }
+    Ok(Client::builder().default_headers(header_map).build()?)
+}
+
+/// Get a reader for remote content with the capability to specify headers, and customer reqwest options.
+///
+/// See [`create_client_with_headers`] for more details on how to create a client with custom headers.
 ///
 /// Example with customer builder that allows invalid certificates (bad practice):
 /// ```no_run
@@ -132,7 +169,7 @@ pub fn get_http_reader(
 ///
 /// * `remote_path` - The remote path of the file to download.
 /// * `local_path` - The local path where the downloaded file will be saved.
-/// * `header` - Optional header information to include in the request. If not specified, an empty HashMap should be provided.
+/// * `opt_client` - Optional custom [reqwest::blocking::Client] to use for the request.
 ///
 /// # Errors
 ///
@@ -194,7 +231,7 @@ pub fn download(
 ///
 /// * `remote_path` - The URL or file path of the file to download.
 /// * `local_path` - The file path to save the downloaded file.
-/// * `header` - Optional headers to include in the download request.
+/// * `opt_client` - Optional custom [reqwest::blocking::Client] to use for the request.
 /// * `retry` - The number of times to retry downloading in case of failure.
 ///
 /// # Errors
@@ -280,7 +317,11 @@ pub(crate) fn remote_file_exists(path: &str) -> Result<bool, OneIoError> {
     match get_protocol(path) {
         Some(protocol) => match protocol.as_str() {
             "http" | "https" => {
-                let client = reqwest::blocking::Client::builder()
+                #[cfg(feature = "rustls")]
+                rustls_sys::crypto::aws_lc_rs::default_provider()
+                    .install_default()
+                    .ok();
+                let client = Client::builder()
                     .timeout(std::time::Duration::from_secs(2))
                     .build()?;
                 let res = client.head(path).send()?;

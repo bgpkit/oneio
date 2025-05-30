@@ -1,4 +1,4 @@
-# OneIO - all-in-one convenient IO library for Rust
+# OneIO - all-in-one IO library for Rust
 
 [![Rust](https://github.com/bgpkit/oneio/actions/workflows/rust.yml/badge.svg)](https://github.com/bgpkit/oneio/actions/workflows/rust.yml)
 [![Crates.io](https://img.shields.io/crates/v/oneio)](https://crates.io/crates/oneio)

@@ -109,7 +109,7 @@ pub fn get_cache_reader(
         path.split('/')
             .collect::<Vec<&str>>()
             .into_iter()
-            .last()
+            .next_back()
             .unwrap()
             .to_string()
     });
