@@ -43,6 +43,10 @@ fn get_http_reader_raw(
             .as_str(),
         "true" | "yes" | "y" | "1"
     );
+    #[cfg(feature = "rustls")]
+    rustls_sys::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .ok();
 
     let client = match opt_client {
         Some(c) => c,
@@ -280,7 +284,11 @@ pub(crate) fn remote_file_exists(path: &str) -> Result<bool, OneIoError> {
     match get_protocol(path) {
         Some(protocol) => match protocol.as_str() {
             "http" | "https" => {
-                let client = reqwest::blocking::Client::builder()
+                #[cfg(feature = "rustls")]
+                rustls_sys::crypto::aws_lc_rs::default_provider()
+                    .install_default()
+                    .ok();
+                let client = Client::builder()
                     .timeout(std::time::Duration::from_secs(2))
                     .build()?;
                 let res = client.head(path).send()?;
