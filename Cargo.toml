@@ -65,6 +65,12 @@ default = ["lib-core", "rustls"]
 
 # library core dependency to enable reading from local/remote with compressions enabled
 lib-core = ["remote", "compressions", "json"]
+
+# remote IO features
+remote = ["http", "ftp"]
+http = ["reqwest"]
+ftp = ["suppaftp"]
+
 # cli dependencies
 cli = [
     # core dependency
@@ -100,7 +106,6 @@ lz = ["lz4"]
 xz = ["xz2"]
 zstd = ["dep:zstd"]
 
-remote = ["reqwest", "suppaftp"]
 json = ["serde", "serde_json"]
 
 # s3 support, off by default
