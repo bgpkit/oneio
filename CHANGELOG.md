@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.18.0 -- 2025-05-30
+
+### Highlights
+
+* split `remote` features into `http` and `ftp`, allowing users who only need HTTP or FTP support to use the
+  corresponding feature flag
+    * in most cases, users will likely not need to use the `ftp` feature
+* add `create_client_with_headers` function to allow creating a `reqwest::blocking::Client` with custom headers
+    * this simplifies the process of creating a client with custom headers for HTTP requests
+    * this also allows users to create custom clients without importing `reqwest` crate directly
+* add `rustls_sys` dependency to support `rustls` as the default TLS backend
+
+### Documentation improvements
+
+* update examples on custom HTTP request function `oneio::get_http_reader` to use `create_client_with_headers`
+
 ## v0.17.0 -- 2024-08-04
 
 ### Highlights
