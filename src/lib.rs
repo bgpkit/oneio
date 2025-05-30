@@ -159,7 +159,7 @@ assert_eq!(lines[1].as_str(), "This is a test.");
 
 ## Use OneIO Writer as a Library
 
-[get_writer] returns a generic writer that implements [Write], and handles decompression from the following types:
+[get_writer] returns a generic writer that implements [std::io::Write], and handles decompression from the following types:
 
 - `gzip`: files ending with `gz` or `gzip`
 - `bzip2`: files ending with `bz` or `bz2`

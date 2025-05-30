@@ -165,7 +165,7 @@ assert_eq!(lines[1].as_str(), "This is a test.");
 
 ### Use OneIO Writer as a Library
 
-[get_writer] returns a generic writer that implements [Write], and handles decompression from the following types:
+[get_writer] returns a generic writer that implements [std::io::Write], and handles decompression from the following types:
 
 - `gzip`: files ending with `gz` or `gzip`
 - `bzip2`: files ending with `bz` or `bz2`
@@ -204,16 +204,10 @@ std::fs::remove_file(to_write_file).unwrap();
 use std::collections::HashMap;
 use reqwest::header::HeaderMap;
 
-let headers: HeaderMap = (&HashMap::from([("X-Custom-Auth-Key".to_string(), "TOKEN".to_string())]))
-    .try_into().expect("invalid headers");
-
-let client = reqwest::blocking::Client::builder()
-    .default_headers(headers)
-    .danger_accept_invalid_certs(true)
-    .build().unwrap();
+let client = oneio::create_client_with_headers([("X-Custom-Auth-Key", "TOKEN")]).unwrap();
 let mut reader = oneio::get_http_reader(
-    "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
-    Some(client),
+  "https://SOME_REMOTE_RESOURCE_PROTECTED_BY_ACCESS_TOKEN",
+  Some(client),
 ).unwrap();
 let mut text = "".to_string();
 reader.read_to_string(&mut text).unwrap();

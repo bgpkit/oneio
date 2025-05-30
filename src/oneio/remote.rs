@@ -1,3 +1,6 @@
+//! This module provides functionality to handle remote file operations such as downloading files
+//! from HTTP, FTP, and S3 protocols.
+//!
 use crate::oneio::compressions::OneIOCompression;
 use crate::oneio::{compressions, get_writer_raw};
 use crate::OneIoError;
@@ -166,7 +169,7 @@ pub fn get_http_reader(
 ///
 /// * `remote_path` - The remote path of the file to download.
 /// * `local_path` - The local path where the downloaded file will be saved.
-/// * `header` - Optional header information to include in the request. If not specified, an empty HashMap should be provided.
+/// * `opt_client` - Optional custom [reqwest::blocking::Client] to use for the request.
 ///
 /// # Errors
 ///
@@ -228,7 +231,7 @@ pub fn download(
 ///
 /// * `remote_path` - The URL or file path of the file to download.
 /// * `local_path` - The file path to save the downloaded file.
-/// * `header` - Optional headers to include in the download request.
+/// * `opt_client` - Optional custom [reqwest::blocking::Client] to use for the request.
 /// * `retry` - The number of times to retry downloading in case of failure.
 ///
 /// # Errors
