@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.18.1 -- 2025-05-31
+
+### ✨ Added
+
+- **New build script**: Added `build.rs` to enforce that at least one TLS backend (`rustls` or `native-tls`) is enabled
+  if any of the remote features (`http`, `ftp`, or `remote`) are enabled.
+- **Module documentation**: Added detailed Rust doc comments to the compression modules (gzip, bzip2, lz4, xz, zstd) and
+  `utils.rs` for improved usability and understanding.
+- **`get_protocol` function**: Utility for extracting protocol from file paths, now used across remote file access
+  functions.
+
+### 🛠️ Changed
+
+- **Feature dependencies**: The `ftp` feature now explicitly depends on the `http` feature in `Cargo.toml`.
+- **Error handling**: Updated `OneIoError` enum to more accurately gate error variants with corresponding features (
+  `http`, `ftp`).
+- **Module structure**:
+    - `compressions` is now a public module.
+    - Refactored how the crate distinguishes between local and remote file access, using `get_protocol`.
+    - `get_reader_raw` and related functions now determine protocol and select the appropriate file reader accordingly.
+- **Compression interface**:
+    - Added a unified trait `OneIOCompression` and `get_compression_reader`/`get_compression_writer` utilities for
+      consistent handling of all supported compression algorithms.
+    - Updated file open logic to use these helpers based on file suffix.
+
+### 🧹 Cleaned up and Improved
+
+- Removed legacy or redundant code paths (e.g., `get_reader_raw_remote`, old error gates).
+- Moved protocol detection and remote file reading logic into more modular and maintainable forms.
+- Several function signatures and internal APIs have been updated for clarity and maintainability.
+
+---
+
+### 📝 Developer Notes
+
+- All compression modules (`gzip`, `bzip2`, `lz4`, `xz`, `zstd`) now include clear documentation and consistent
+  interfaces for reading and writing compressed files.
+- Users enabling remote protocol features must ensure at least one TLS backend is also enabled.
+
 ## v0.18.0 -- 2025-05-30
 
 ### Highlights
