@@ -193,10 +193,10 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
 pub fn exists(path: &str) -> Result<bool, OneIoError> {
     #[cfg(any(feature = "http", feature = "s3"))]
     {
-        return remote::remote_file_exists(path);
+        remote::remote_file_exists(path)
     }
     #[cfg(not(any(feature = "http", feature = "s3")))]
     {
-        return Ok(Path::new(path).exists());
+        Ok(Path::new(path).exists())
     }
 }
