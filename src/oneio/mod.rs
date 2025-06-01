@@ -1,22 +1,28 @@
-mod compressions;
-#[allow(unused_imports)]
-use crate::oneio::compressions::OneIOCompression;
+pub mod compressions;
 #[cfg(feature = "digest")]
 pub mod digest;
-#[cfg(feature = "remote")]
+#[cfg(any(feature = "http", feature = "ftp"))]
 pub mod remote;
 #[cfg(feature = "s3")]
 pub mod s3;
 
 pub mod utils;
 
-pub use utils::*;
-
 use crate::OneIoError;
 
+use crate::oneio::compressions::{get_compression_reader, get_compression_writer};
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
+
+/// Extracts the protocol from a given path.
+pub(crate) fn get_protocol(path: &str) -> Option<String> {
+    let parts = path.split("://").collect::<Vec<&str>>();
+    if parts.len() < 2 {
+        return None;
+    }
+    Some(parts[0].to_string())
+}
 
 pub fn get_writer_raw(path: &str) -> Result<BufWriter<File>, OneIoError> {
     let path = Path::new(path);
@@ -28,10 +34,29 @@ pub fn get_writer_raw(path: &str) -> Result<BufWriter<File>, OneIoError> {
 }
 
 pub fn get_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
-    #[cfg(feature = "remote")]
-    let raw_reader: Box<dyn Read + Send> = remote::get_reader_raw_remote(path)?;
-    #[cfg(not(feature = "remote"))]
-    let raw_reader: Box<dyn Read + Send> = Box::new(std::fs::File::open(path)?);
+    let raw_reader: Box<dyn Read + Send> = match get_protocol(path) {
+        Some(protocol) => match protocol.as_str() {
+            #[cfg(feature = "http")]
+            "http" | "https" => {
+                let response = remote::get_http_reader_raw(path, None)?;
+                Box::new(response)
+            }
+            #[cfg(feature = "ftp")]
+            "ftp" => {
+                let response = remote::get_ftp_reader_raw(path)?;
+                Box::new(response)
+            }
+            #[cfg(feature = "s3")]
+            "s3" | "r2" => {
+                let (bucket, path) = s3::s3_url_parse(path)?;
+                Box::new(s3::s3_reader(bucket.as_str(), path.as_str())?)
+            }
+            _ => {
+                return Err(OneIoError::NotSupported(path.to_string()));
+            }
+        },
+        None => Box::new(File::open(path)?),
+    };
     Ok(raw_reader)
 }
 
@@ -61,22 +86,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     let raw_reader = get_reader_raw(path)?;
 
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
-    match file_type {
-        #[cfg(feature = "gz")]
-        "gz" | "gzip" | "tgz" => compressions::gzip::OneIOGzip::get_reader(raw_reader),
-        #[cfg(feature = "bz")]
-        "bz2" | "bz" => compressions::bzip2::OneIOBzip2::get_reader(raw_reader),
-        #[cfg(feature = "lz4")]
-        "lz4" | "lz" => compressions::lz4::OneIOLz4::get_reader(raw_reader),
-        #[cfg(feature = "xz")]
-        "xz" | "xz2" | "lzma" => compressions::xz::OneIOXz::get_reader(raw_reader),
-        #[cfg(feature = "zstd")]
-        "zst" | "zstd" => compressions::zstd::OneIOZstd::get_reader(raw_reader),
-        _ => {
-            // unknown file type of file {}. try to read as uncompressed file
-            Ok(Box::new(raw_reader))
-        }
-    }
+    get_compression_reader(raw_reader, file_type)
 }
 
 /// get file reader with local cache.
@@ -158,19 +168,7 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
     let output_file = BufWriter::new(File::create(path)?);
 
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
-    match file_type {
-        #[cfg(feature = "gz")]
-        "gz" | "gzip" | "tgz" => compressions::gzip::OneIOGzip::get_writer(output_file),
-        #[cfg(feature = "bz")]
-        "bz2" | "bz" => compressions::bzip2::OneIOBzip2::get_writer(output_file),
-        #[cfg(feature = "lz4")]
-        "lz4" | "lz" => compressions::lz4::OneIOLz4::get_writer(output_file),
-        #[cfg(feature = "xz")]
-        "xz" | "xz2" | "lzma" => compressions::xz::OneIOXz::get_writer(output_file),
-        #[cfg(feature = "zstd")]
-        "zst" | "zstd" => compressions::zstd::OneIOZstd::get_writer(output_file),
-        _ => Ok(Box::new(BufWriter::new(output_file))),
-    }
+    get_compression_writer(output_file, file_type)
 }
 
 /// Check if a file or directory exists.
@@ -193,8 +191,8 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
 ///
 /// This function may return a `OneIoError` if there is an error accessing the file system or if the `remote` feature is enabled and there is an error
 pub fn exists(path: &str) -> Result<bool, OneIoError> {
-    #[cfg(feature = "remote")]
+    #[cfg(any(feature = "http", feature = "ftp"))]
     return remote::remote_file_exists(path);
-    #[cfg(not(feature = "remote"))]
+    #[cfg(not(any(feature = "http", feature = "ftp")))]
     Ok(std::path::Path::new(path).exists())
 }

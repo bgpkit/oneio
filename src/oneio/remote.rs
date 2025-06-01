@@ -1,21 +1,14 @@
 //! This module provides functionality to handle remote file operations such as downloading files
 //! from HTTP, FTP, and S3 protocols.
 //!
-use crate::oneio::compressions::OneIOCompression;
-use crate::oneio::{compressions, get_writer_raw};
+use crate::oneio::compressions::get_compression_reader;
+use crate::oneio::{get_protocol, get_writer_raw};
 use crate::OneIoError;
 use reqwest::blocking::Client;
 use std::io::Read;
 
-fn get_protocol(path: &str) -> Option<String> {
-    let parts = path.split("://").collect::<Vec<&str>>();
-    if parts.len() < 2 {
-        return None;
-    }
-    Some(parts[0].to_string())
-}
-
-fn get_ftp_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
+#[cfg(feature = "ftp")]
+pub(crate) fn get_ftp_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     if !path.starts_with("ftp://") {
         return Err(OneIoError::NotSupported(path.to_string()));
     }
@@ -34,7 +27,8 @@ fn get_ftp_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     Ok(reader)
 }
 
-fn get_http_reader_raw(
+#[cfg(feature = "http")]
+pub(crate) fn get_http_reader_raw(
     path: &str,
     opt_client: Option<Client>,
 ) -> Result<reqwest::blocking::Response, OneIoError> {
@@ -106,6 +100,7 @@ fn get_http_reader_raw(
 /// reader.read_to_string(&mut text).unwrap();
 /// println!("{}", text);
 /// ```
+#[cfg(feature = "http")]
 pub fn create_client_with_headers<I, K, V>(headers: I) -> Result<Client, OneIoError>
 where
     I: IntoIterator<Item = (K, V)>,
@@ -141,26 +136,14 @@ where
 /// reader.read_to_string(&mut text).unwrap();
 /// println!("{}", text);
 /// ```
+#[cfg(feature = "http")]
 pub fn get_http_reader(
     path: &str,
     opt_client: Option<Client>,
 ) -> Result<Box<dyn Read + Send>, OneIoError> {
     let raw_reader: Box<dyn Read + Send> = Box::new(get_http_reader_raw(path, opt_client)?);
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
-    match file_type {
-        #[cfg(feature = "gz")]
-        "gz" | "gzip" => compressions::gzip::OneIOGzip::get_reader(raw_reader),
-        #[cfg(feature = "bz")]
-        "bz2" | "bz" => compressions::bzip2::OneIOBzip2::get_reader(raw_reader),
-        #[cfg(feature = "lz4")]
-        "lz4" | "lz" => compressions::lz4::OneIOLz4::get_reader(raw_reader),
-        #[cfg(feature = "xz")]
-        "xz" | "xz2" | "lzma" => compressions::xz::OneIOXz::get_reader(raw_reader),
-        _ => {
-            // unknown file type of file {}. try to read as uncompressed file
-            Ok(Box::new(raw_reader))
-        }
-    }
+    get_compression_reader(raw_reader, file_type)
 }
 
 /// Downloads a file from a remote location to a local path.
@@ -202,11 +185,13 @@ pub fn download(
             return Err(OneIoError::NotSupported(remote_path.to_string()));
         }
         Some(protocol) => match protocol.as_str() {
+            #[cfg(feature = "http")]
             "http" | "https" => {
                 let mut writer = get_writer_raw(local_path)?;
                 let mut response = get_http_reader_raw(remote_path, opt_client)?;
                 response.copy_to(&mut writer)?;
             }
+            #[cfg(feature = "ftp")]
             "ftp" => {
                 let mut writer = get_writer_raw(local_path)?;
                 let mut reader = get_ftp_reader_raw(remote_path)?;
@@ -274,32 +259,6 @@ pub fn download_with_retry(
             }
         }
     }
-}
-
-pub(crate) fn get_reader_raw_remote(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
-    let raw_reader: Box<dyn Read + Send> = match get_protocol(path) {
-        Some(protocol) => match protocol.as_str() {
-            "http" | "https" => {
-                let response = get_http_reader_raw(path, None)?;
-                Box::new(response)
-            }
-            "ftp" => {
-                let response = get_ftp_reader_raw(path)?;
-                Box::new(response)
-            }
-            #[cfg(feature = "s3")]
-            "s3" => {
-                let (bucket, path) = crate::oneio::s3::s3_url_parse(path)?;
-                Box::new(crate::oneio::s3::s3_reader(bucket.as_str(), path.as_str())?)
-            }
-            _ => {
-                return Err(OneIoError::NotSupported(path.to_string()));
-            }
-        },
-        None => Box::new(std::fs::File::open(path)?),
-    };
-
-    Ok(raw_reader)
 }
 
 /// Check if a remote or local file exists.
