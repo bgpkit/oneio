@@ -1,9 +1,8 @@
 //! This module provides functionality to handle remote file operations such as downloading files
 //! from HTTP, FTP, and S3 protocols.
-//!
-use crate::oneio::compressions::get_compression_reader;
 use crate::oneio::{get_protocol, get_writer_raw};
 use crate::OneIoError;
+#[cfg(feature = "http")]
 use reqwest::blocking::Client;
 use std::io::Read;
 
@@ -141,6 +140,8 @@ pub fn get_http_reader(
     path: &str,
     opt_client: Option<Client>,
 ) -> Result<Box<dyn Read + Send>, OneIoError> {
+    use crate::oneio::compressions::get_compression_reader;
+
     let raw_reader: Box<dyn Read + Send> = Box::new(get_http_reader_raw(path, opt_client)?);
     let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
     get_compression_reader(raw_reader, file_type)
@@ -178,6 +179,7 @@ pub fn get_http_reader(
 pub fn download(
     remote_path: &str,
     local_path: &str,
+    // FIXME: the Client is only useful for `http` feature, but `ftp` feature has to depend on it too
     opt_client: Option<Client>,
 ) -> Result<(), OneIoError> {
     match get_protocol(remote_path) {
