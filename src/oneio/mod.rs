@@ -191,8 +191,9 @@ pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
 ///
 /// This function may return a `OneIoError` if there is an error accessing the file system or if the `remote` feature is enabled and there is an error
 pub fn exists(path: &str) -> Result<bool, OneIoError> {
-    #[cfg(any(feature = "http", feature = "ftp"))]
-    return remote::remote_file_exists(path);
-    #[cfg(not(any(feature = "http", feature = "ftp")))]
-    Ok(std::path::Path::new(path).exists())
+    if cfg!(any(feature = "http", feature = "s3")) {
+        remote::remote_file_exists(path)
+    } else {
+        Ok(Path::new(path).exists())
+    }
 }
