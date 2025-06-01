@@ -1,3 +1,10 @@
+//! Utility functions for file reading and deserialization in OneIO.
+//!
+//! This module provides helper functions to read file contents as strings,
+//! deserialize JSON files into Rust structs, and iterate over lines in files.
+//! These utilities abstract over different file sources and formats,
+//! simplifying common I/O operations for users of the OneIO crate.
+
 use crate::{get_reader, OneIoError};
 use std::io::{BufRead, BufReader, Lines, Read};
 

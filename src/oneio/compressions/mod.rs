@@ -1,3 +1,12 @@
+//! Compression algorithms and utilities for OneIO.
+//!
+//! This module provides a unified interface for reading and writing files with various compression
+//! formats, including gzip, bzip2, lz4, xz, and zstd. The available algorithms depend on enabled
+//! Cargo features. Each compression algorithm implements the [`OneIOCompression`] trait, which
+//! defines methods for creating readers and writers that transparently handle compression and
+//! decompression. Utility functions are provided to select the appropriate algorithm based on file
+//! suffixes.
+
 use crate::OneIoError;
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
