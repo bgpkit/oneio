@@ -13,12 +13,51 @@ pub(crate) mod xz;
 #[cfg(feature = "zstd")]
 pub(crate) mod zstd;
 
+/// Trait for compression algorithms used in OneIO.
+///
+/// This trait defines the interface for compression and decompression implementations.
+/// Types implementing this trait provide methods to create readers and writers that
+/// transparently handle compression or decompression for supported formats.
+///
+/// # Required Methods
+///
+/// - `get_reader`: Returns a boxed reader that decompresses data from the given reader.
+/// - `get_writer`: Returns a boxed writer that compresses data to the given writer.
+///
+/// # Errors
+///
+/// Both methods return a `Result` that contains an error if the compression or decompression
+/// stream could not be created.
 pub trait OneIOCompression {
     fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError>;
     fn get_writer(raw_writer: BufWriter<File>) -> Result<Box<dyn Write>, OneIoError>;
 }
 
-/// Returns a reader for the given file path, handling compression based on the file type.
+/// Returns a compression reader for the given file suffix.
+///
+/// This function selects the appropriate compression algorithm based on the provided
+/// `file_suffix` (such as `"gz"`, `"bz2"`, `"lz4"`, `"xz"`, or `"zst"`), and returns a
+/// reader that transparently decompresses data as it is read. If the suffix is not recognized,
+/// the original `raw_reader` is returned unchanged.
+///
+/// # Arguments
+///
+/// * `raw_reader` - A boxed reader implementing `Read + Send`, typically the source file or stream.
+/// * `file_suffix` - The file extension or suffix indicating the compression type.
+///
+/// # Returns
+///
+/// * `Ok(Box<dyn Read + Send>)` - A boxed reader that decompresses data on the fly, or the original reader if no compression is detected.
+/// * `Err(OneIoError)` - If the compression reader could not be created.
+///
+/// # Feature Flags
+///
+/// The available compression algorithms depend on enabled Cargo features:
+/// - `"gz"` for gzip
+/// - `"bz"` for bzip2
+/// - `"lz"` for lz4
+/// - `"xz"` for xz/lzma
+/// - `"zstd"` for zstandard
 pub(crate) fn get_compression_reader(
     raw_reader: Box<dyn Read + Send>,
     file_suffix: &str,
@@ -41,6 +80,31 @@ pub(crate) fn get_compression_reader(
     }
 }
 
+/// Returns a compression writer for the given file suffix.
+///
+/// This function selects the appropriate compression algorithm based on the provided
+/// `file_suffix` (such as `"gz"`, `"bz2"`, `"lz4"`, `"xz"`, or `"zst"`), and returns a
+/// writer that transparently compresses data as it is written. If the suffix is not recognized,
+/// the original `raw_writer` is returned unchanged.
+///
+/// # Arguments
+///
+/// * `raw_writer` - A buffered writer for the target file.
+/// * `file_suffix` - The file extension or suffix indicating the compression type.
+///
+/// # Returns
+///
+/// * `Ok(Box<dyn Write>)` - A boxed writer that compresses data on the fly, or the original writer if no compression is detected.
+/// * `Err(OneIoError)` - If the compression writer could not be created.
+///
+/// # Feature Flags
+///
+/// The available compression algorithms depend on enabled Cargo features:
+/// - `"gz"` for gzip
+/// - `"bz"` for bzip2
+/// - `"lz"` for lz4
+/// - `"xz"` for xz/lzma
+/// - `"zstd"` for zstandard
 pub(crate) fn get_compression_writer(
     raw_writer: BufWriter<File>,
     file_suffix: &str,
