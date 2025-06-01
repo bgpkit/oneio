@@ -2,10 +2,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum OneIoError {
-    #[cfg(feature = "remote")]
+    #[cfg(feature = "http")]
     #[error("remote IO error: {0}")]
     RemoteIoError(#[from] reqwest::Error),
-    #[cfg(feature = "remote")]
+    #[cfg(feature = "ftp")]
     #[error("FTP error: {0}")]
     FptError(#[from] suppaftp::FtpError),
     #[cfg(feature = "json")]

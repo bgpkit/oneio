@@ -296,4 +296,6 @@ pub use crate::oneio::remote::*;
 #[cfg(feature = "s3")]
 pub use crate::oneio::s3::*;
 
+pub use crate::oneio::utils::*;
+
 pub use crate::oneio::*;

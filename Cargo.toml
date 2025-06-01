@@ -69,7 +69,7 @@ lib-core = ["remote", "compressions", "json"]
 # remote IO features
 remote = ["http", "ftp"]
 http = ["reqwest"]
-ftp = ["suppaftp"]
+ftp = ["http", "suppaftp"] # ftp also requires http feature on purpose
 
 # cli dependencies
 cli = [
