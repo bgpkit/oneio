@@ -43,7 +43,6 @@ zstd = { version = "0.13.2", optional = true }
 # feature: digest
 ring = { version = "0.17", optional = true }
 hex = { version = "0.4", optional = true }
-rustls_sys = { package = "rustls", version = "0.23", optional = true }
 
 # feature: json
 serde = { version = "1.0", optional = true }
@@ -92,8 +91,7 @@ native-tls = [
 rustls = [
     "reqwest?/rustls-tls",
     "suppaftp?/rustls",
-    "rust-s3?/sync-rustls-tls",
-    "rustls_sys"
+    "rust-s3?/sync-rustls-tls"
 ]
 
 digest = ["ring", "hex"]
