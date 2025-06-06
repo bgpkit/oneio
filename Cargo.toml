@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.18.1"
+version = "0.18.2"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -56,6 +56,8 @@ rust-s3 = { version = "0.34.0-rc4", optional = true, default-features = false, f
 # feature: cli
 clap = { version = "4.4", features = ["derive"], optional = true }
 tracing = { version = "0.1", optional = true }
+
+rustls_sys = { package = "rustls", version = "0.23", optional = true }
 
 
 [features]

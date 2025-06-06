@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.18.2 -- 2025-06-06
+
+### Hot Fix
+
+* Make `rustls_sys` dependency optional and exclude from `rustls` feature flag
+
 ## v0.18.1 -- 2025-05-31
 
 ### ✨ Added
