@@ -18,7 +18,11 @@ use std::io::{BufWriter, Read, Write};
 pub(crate) fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError> {
     Decoder::new(raw_reader)
         .map(|decoder| Box::new(decoder) as Box<dyn Read + Send>)
-        .map_err(|e| OneIoError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+        .map_err(|e| {
+            // Preserve original error information in the message
+            let error_msg = format!("LZ4 decoder initialization failed: {e}");
+            OneIoError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, error_msg))
+        })
 }
 
 /// Returns an error because lz4 writer is not currently supported.
