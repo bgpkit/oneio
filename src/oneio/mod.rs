@@ -112,7 +112,7 @@ pub fn get_cache_reader(
 
     let cache_file_name = cache_file_name.unwrap_or_else(|| {
         path.split('/')
-            .last()
+            .next_back()
             .unwrap_or("cached_file")
             .to_string()
     });
@@ -363,10 +363,7 @@ where
     let progress_reader = ProgressReader::new(raw_reader, total_size, progress);
 
     // Apply compression to the progress-wrapped reader
-    let file_type = Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let file_type = path.rsplit('.').next().unwrap_or("");
 
     let final_reader = get_compression_reader(Box::new(progress_reader), file_type)?;
 
@@ -414,10 +411,7 @@ pub async fn get_reader_async(path: &str) -> Result<Box<dyn AsyncRead + Send + U
     let raw_reader = get_async_reader_raw(path).await?;
 
     // Apply compression
-    let file_type = Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let file_type = path.rsplit('.').next().unwrap_or("");
 
     get_async_compression_reader(raw_reader, file_type)
 }
@@ -507,7 +501,7 @@ async fn get_async_reader_raw(path: &str) -> Result<Box<dyn AsyncRead + Send + U
         Some(protocol) if protocol == "http" || protocol == "https" => {
             let response = reqwest::get(path).await?;
             let bytes = response.bytes().await?;
-            Box::new(std::io::Cursor::new(bytes.to_vec()))
+            Box::new(std::io::Cursor::new(bytes))
         }
         #[cfg(feature = "ftp")]
         Some(protocol) if protocol == "ftp" => {

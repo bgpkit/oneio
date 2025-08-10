@@ -495,14 +495,14 @@ mod tests {
         assert!(!std::path::Path::new(non_existent_file).exists());
         
         // This should return an error quickly due to early file validation
-        let _start = std::time::Instant::now();
+        let start = std::time::Instant::now();
         
         match s3_upload("test-bucket", "test-path", non_existent_file) {
             Ok(_) => {
                 panic!("Upload should have failed for non-existent file");
             }
             Err(crate::OneIoError::Io(e)) => {
-                let duration = _start.elapsed();
+                let duration = start.elapsed();
                 println!("✓ Upload failed quickly with IO error after {:?}: {}", duration, e);
                 assert!(duration < std::time::Duration::from_millis(100), 
                         "Early validation should be instant. Took: {:?}", duration);
@@ -511,7 +511,7 @@ mod tests {
             }
             Err(e) => {
                 // Could also fail due to missing credentials, which is also quick
-                let duration = _start.elapsed();
+                let duration = start.elapsed();
                 println!("Upload failed with error after {:?}: {:?}", duration, e);
                 assert!(duration < std::time::Duration::from_secs(1), 
                         "Should fail quickly, not hang. Took: {:?}", duration);
