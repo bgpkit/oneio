@@ -194,6 +194,15 @@ pub fn s3_reader(bucket: &str, path: &str) -> Result<Box<dyn Read + Send>, OneIo
 /// assert!(result.is_ok());
 /// ```
 pub fn s3_upload(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), OneIoError> {
+    // Early validation: check if file exists before attempting S3 operations
+    // This prevents potential hanging issues when file doesn't exist
+    if !std::path::Path::new(file_path).exists() {
+        return Err(OneIoError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("File not found: {file_path}"),
+        )));
+    }
+    
     let bucket = s3_bucket(bucket)?;
     let mut reader = get_reader_raw(file_path)?;
     bucket.put_object_stream(&mut reader, s3_path)?;
