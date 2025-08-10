@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased changes
+
+### Code improvements
+- **S3 error handling**: Replace fragile string matching with HTTP status code parsing in `s3_exists()` for more reliable object existence checks
+- **Progress tracking**: Improve content length error handling to distinguish between unknown size (expected) and failed size determination, with warning logs for debugging
+- **Examples**: Replace unreliable `httpbin.org` endpoint with stable `spaces.bgpkit.org` endpoint in progress tracking examples
+
+### Breaking Changes
+- **Progress tracking API**: Changed `get_reader_with_progress()` signature to return `Option<u64>` instead of `u64` for total size
+  - `Some(size)` indicates known file size
+  - `None` indicates unknown file size (e.g., streaming endpoints without Content-Length)
+  - Provides better semantic clarity about whether size information is available
+
+**Migration guide:**
+```rust
+// Before
+let (reader, total_size) = get_reader_with_progress(path, callback)?;
+if total_size > 0 {
+    println!("Size: {} bytes", total_size);
+} else {
+    println!("Size: unknown");
+}
+
+// After  
+let (reader, total_size) = get_reader_with_progress(path, callback)?;
+match total_size {
+    Some(size) => println!("Size: {} bytes", size),
+    None => println!("Size: unknown"),
+}
+```
+
 ## v0.19.0 -- 2025-08-10
 
 ### 🎉 Major Release: Feature Simplification & New Features

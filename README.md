@@ -56,7 +56,9 @@ Set `ONEIO_ACCEPT_INVALID_CERTS=true` to accept invalid certificates (not recomm
 ### New in v0.19
 
 #### Progress Tracking
-Track download/read progress with callbacks, works with both known and unknown file sizes:
+Track download/read progress with callbacks, works with both known and unknown file sizes.
+Progress tracking now provides better error handling and distinguishes between unknown size
+(streaming endpoints) and failed size determination:
 
 ```rust
 use oneio;
@@ -73,11 +75,10 @@ let (mut reader, total_size) = oneio::get_reader_with_progress(
     }
 )?;
 
-// total_size is 0 when file size cannot be determined
-if total_size > 0 {
-    println!("File size: {} bytes", total_size);
-} else {
-    println!("File size: unknown (streaming)");
+// total_size is None when file size cannot be determined
+match total_size {
+    Some(size) => println!("File size: {} bytes", size),
+    None => println!("File size: unknown (streaming)"),
 }
 
 let content = std::io::read_to_string(&mut reader)?;
@@ -234,7 +235,7 @@ let content = oneio::read_to_string("s3://my-bucket/path/to/file.txt")?;
 // Download from S3
 s3_download("my-bucket", "path/to/file.txt", "downloaded.txt")?;
 
-// Check if S3 object exists
+// Check if S3 object exists (improved error handling)
 if s3_exists("my-bucket", "path/to/file.txt")? {
     println!("File exists!");
 }

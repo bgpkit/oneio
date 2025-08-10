@@ -202,7 +202,7 @@ pub fn s3_upload(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), One
             format!("File not found: {file_path}"),
         )));
     }
-    
+
     let bucket = s3_bucket(bucket)?;
     let mut reader = get_reader_raw(file_path)?;
     bucket.put_object_stream(&mut reader, s3_path)?;
@@ -391,18 +391,23 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
     match s3_stats(bucket, path) {
         Ok(_) => Ok(true),
         Err(err) => {
-            // Check if this is a 404-like network error
+            // Check if this is a 404 network error by parsing the status code
             if let OneIoError::Network(boxed_err) = &err {
-                if boxed_err.to_string().contains("404")
-                    || boxed_err.to_string().contains("not found")
-                {
-                    Ok(false)
-                } else {
-                    Err(err)
+                let error_msg = boxed_err.to_string();
+                if error_msg.starts_with("S3 HTTP error: ") {
+                    // Parse the status code from the structured error message
+                    if let Some(code_str) = error_msg.strip_prefix("S3 HTTP error: ") {
+                        if let Ok(status_code) = code_str.parse::<u16>() {
+                            return match status_code {
+                                404 => Ok(false), // Not Found
+                                403 => Ok(false), // Forbidden (often means object doesn't exist)
+                                _ => Err(err),    // Other errors should propagate
+                            };
+                        }
+                    }
                 }
-            } else {
-                Err(err)
             }
+            Err(err)
         }
     }
 }
@@ -487,25 +492,31 @@ mod tests {
     fn test_s3_upload_nonexistent_file_early_validation() {
         // Test for issue #48: s3_upload should fail quickly for non-existent files
         // This test checks the early validation logic without requiring S3 credentials
-        
+
         let non_existent_file = "/tmp/oneio_test_nonexistent_file_12345.txt";
-        
+
         // Make sure the file doesn't exist
         let _ = std::fs::remove_file(non_existent_file);
         assert!(!std::path::Path::new(non_existent_file).exists());
-        
+
         // This should return an error quickly due to early file validation
         let start = std::time::Instant::now();
-        
+
         match s3_upload("test-bucket", "test-path", non_existent_file) {
             Ok(_) => {
                 panic!("Upload should have failed for non-existent file");
             }
             Err(crate::OneIoError::Io(e)) => {
                 let duration = start.elapsed();
-                println!("✓ Upload failed quickly with IO error after {:?}: {}", duration, e);
-                assert!(duration < std::time::Duration::from_millis(100), 
-                        "Early validation should be instant. Took: {:?}", duration);
+                println!(
+                    "✓ Upload failed quickly with IO error after {:?}: {}",
+                    duration, e
+                );
+                assert!(
+                    duration < std::time::Duration::from_millis(100),
+                    "Early validation should be instant. Took: {:?}",
+                    duration
+                );
                 assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
                 assert!(e.to_string().contains("File not found"));
             }
@@ -513,8 +524,11 @@ mod tests {
                 // Could also fail due to missing credentials, which is also quick
                 let duration = start.elapsed();
                 println!("Upload failed with error after {:?}: {:?}", duration, e);
-                assert!(duration < std::time::Duration::from_secs(1), 
-                        "Should fail quickly, not hang. Took: {:?}", duration);
+                assert!(
+                    duration < std::time::Duration::from_secs(1),
+                    "Should fail quickly, not hang. Took: {:?}",
+                    duration
+                );
             }
         }
     }

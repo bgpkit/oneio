@@ -303,8 +303,9 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
 /// Gets a reader with progress tracking that reports bytes read and total file size
 ///
 /// This function returns both a reader and the total file size. If the total size cannot
-/// be determined (e.g., streaming endpoints without Content-Length), it uses 0 as the
-/// total size, allowing progress tracking to work with unknown file sizes.
+/// be determined (e.g., streaming endpoints without Content-Length), it returns `None`
+/// for the size, providing better context about whether the size is genuinely unknown
+/// versus a failure to determine it.
 ///
 /// The progress callback receives (bytes_read, total_bytes) and tracks raw bytes read
 /// from the source before any decompression. When total_bytes is 0, it indicates the
@@ -315,7 +316,8 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
 /// * `progress` - Callback function called with (bytes_read, total_bytes)
 ///
 /// # Returns
-/// * `Ok((reader, total_size))` - Reader and total file size in bytes (0 if unknown)
+/// * `Ok((reader, Some(total_size)))` - Reader and total file size in bytes
+/// * `Ok((reader, None))` - Reader with unknown total size
 /// * `Err(OneIoError::Network)` - If network error occurs
 /// * `Err(OneIoError::Io)` - If file system error occurs
 ///
@@ -337,10 +339,9 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
 ///     }
 /// )?;
 ///
-/// if total_size > 0 {
-///     println!("File size: {} bytes", total_size);
-/// } else {
-///     println!("File size: unknown");
+/// match total_size {
+///     Some(size) => println!("File size: {} bytes", size),
+///     None => println!("File size: unknown"),
 /// }
 /// let mut content = String::new();
 /// reader.read_to_string(&mut content)?;
@@ -349,12 +350,23 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
 pub fn get_reader_with_progress<F>(
     path: &str,
     progress: F,
-) -> Result<(Box<dyn Read + Send>, u64), OneIoError>
+) -> Result<(Box<dyn Read + Send>, Option<u64>), OneIoError>
 where
     F: Fn(u64, u64) + Send + 'static,
 {
-    // Try to determine total size, but don't fail if not possible
-    let total_size = get_content_length(path).unwrap_or(0);
+    // Try to determine total size, but distinguish between 'unknown size' and 'failed to determine size'
+    let (total_size, size_option) = match get_content_length(path) {
+        Ok(size) => (size, Some(size)),
+        Err(OneIoError::NotSupported(_)) => {
+            // Size cannot be determined (e.g., streaming endpoints) - this is expected for some cases
+            (0, None)
+        }
+        Err(e) => {
+            // Log the error for debugging purposes but continue with unknown size
+            eprintln!("Warning: Failed to determine content length for '{path}': {e}");
+            (0, None)
+        }
+    };
 
     // Get raw reader (before compression)
     let raw_reader = get_reader_raw(path)?;
@@ -367,7 +379,7 @@ where
 
     let final_reader = get_compression_reader(Box::new(progress_reader), file_type)?;
 
-    Ok((final_reader, total_size))
+    Ok((final_reader, size_option))
 }
 
 // ================================
@@ -505,7 +517,7 @@ async fn get_async_reader_raw(path: &str) -> Result<Box<dyn AsyncRead + Send + U
         }
         #[cfg(feature = "ftp")]
         Some(protocol) if protocol == "ftp" => {
-            // FTP async not supported - use sync version with tokio::task::spawn_blocking 
+            // FTP async not supported - use sync version with tokio::task::spawn_blocking
             return Err(OneIoError::NotSupported(
                 "FTP async not supported - use sync get_reader() instead".to_string(),
             ));
@@ -605,13 +617,16 @@ mod tests {
         let calls_clone = progress_calls.clone();
 
         // Test with a local compressed file
-        let result = get_reader_with_progress("tests/test_data.txt.gz", move |bytes_read, total_bytes| {
-            calls_clone.lock().unwrap().push((bytes_read, total_bytes));
-        });
+        let result =
+            get_reader_with_progress("tests/test_data.txt.gz", move |bytes_read, total_bytes| {
+                calls_clone.lock().unwrap().push((bytes_read, total_bytes));
+            });
 
         match result {
             Ok((mut reader, total_size)) => {
-                assert!(total_size > 0, "Total size should be greater than 0");
+                assert!(total_size.is_some(), "Local file should have known size");
+                let size = total_size.unwrap();
+                assert!(size > 0, "Total size should be greater than 0");
 
                 // Read the entire file
                 let mut content = String::new();
@@ -627,11 +642,8 @@ mod tests {
 
                 // Verify progress calls are reasonable
                 let (last_bytes, last_total) = calls.last().unwrap();
-                assert_eq!(*last_total, total_size, "Total should match in callbacks");
-                assert!(
-                    *last_bytes <= total_size,
-                    "Bytes read should not exceed total"
-                );
+                assert_eq!(*last_total, size, "Total should match in callbacks");
+                assert!(*last_bytes <= size, "Bytes read should not exceed total");
                 assert!(*last_bytes > 0, "Should have read some bytes");
             }
             Err(e) => {
@@ -673,16 +685,26 @@ mod tests {
                 );
 
                 let (last_bytes, last_total) = calls.last().unwrap();
-                assert_eq!(*last_total, total_size);
-                
-                if total_size > 0 {
-                    // Known size: verify bytes read doesn't exceed total
-                    assert!(*last_bytes <= total_size);
-                    println!("Progress tracking succeeded with known size: {} bytes", total_size);
-                } else {
-                    // Unknown size: just verify we read some bytes
-                    assert!(*last_bytes > 0, "Should have read some bytes");
-                    println!("Progress tracking succeeded with unknown size: {} bytes read", last_bytes);
+
+                match total_size {
+                    Some(size) => {
+                        assert_eq!(*last_total, size, "Total should match in callbacks");
+                        // Known size: verify bytes read doesn't exceed total
+                        assert!(*last_bytes <= size);
+                        println!(
+                            "Progress tracking succeeded with known size: {} bytes",
+                            size
+                        );
+                    }
+                    None => {
+                        assert_eq!(*last_total, 0, "Callback should get 0 for unknown size");
+                        // Unknown size: just verify we read some bytes
+                        assert!(*last_bytes > 0, "Should have read some bytes");
+                        println!(
+                            "Progress tracking succeeded with unknown size: {} bytes read",
+                            last_bytes
+                        );
+                    }
                 }
             }
             Err(e) => println!("Progress tracking remote test skipped: {:?}", e),

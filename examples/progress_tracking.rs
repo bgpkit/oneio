@@ -22,9 +22,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Example 3: Percentage Progress ===");
     percentage_progress()?;
 
-    // Example 4: Handling files without size information
-    println!("\n=== Example 4: Unknown Size Progress ===");
-    unknown_size_example()?;
+    // Example 4: Remote file progress tracking
+    println!("\n=== Example 4: Remote File Progress ===");
+    remote_progress_example()?;
 
     Ok(())
 }
@@ -35,7 +35,10 @@ fn basic_local_progress() -> Result<(), Box<dyn std::error::Error>> {
             println!("Progress: {}/{} bytes", bytes_read, total_bytes);
         })?;
 
-    println!("File size: {} bytes (compressed)", total_size);
+    match total_size {
+        Some(size) => println!("File size: {} bytes (compressed)", size),
+        None => println!("File size: unknown (compressed)"),
+    }
 
     let mut content = String::new();
     reader.read_to_string(&mut content)?;
@@ -73,7 +76,10 @@ fn formatted_progress() -> Result<(), Box<dyn std::error::Error>> {
             std::io::stdout().flush().unwrap();
         })?;
 
-    println!("Reading {} file...", format_bytes(total_size));
+    match total_size {
+        Some(size) => println!("Reading {} file...", format_bytes(size)),
+        None => println!("Reading file of unknown size..."),
+    }
 
     let mut buffer = vec![0; 512];
     while reader.read(&mut buffer)? > 0 {
@@ -101,10 +107,9 @@ fn percentage_progress() -> Result<(), Box<dyn std::error::Error>> {
             std::io::stdout().flush().unwrap();
         })?;
 
-    if total_size > 0 {
-        println!("Starting download of {} bytes...", total_size);
-    } else {
-        println!("Starting download of unknown size...");
+    match total_size {
+        Some(size) => println!("Starting download of {} bytes...", size),
+        None => println!("Starting download of unknown size..."),
     }
 
     let mut content = Vec::new();
@@ -115,33 +120,41 @@ fn percentage_progress() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn unknown_size_example() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Testing progress tracking with streaming endpoint (unknown size)...");
+fn remote_progress_example() -> Result<(), Box<dyn std::error::Error>> {
+    println!("Testing progress tracking with remote endpoint...");
 
-    // Now progress tracking works even without Content-Length!
+    // Use the same reliable endpoint as in tests
     let (mut reader, total_size) = oneio::get_reader_with_progress(
-        "https://httpbin.org/stream/3", // Streaming endpoint without Content-Length
+        "https://spaces.bgpkit.org/oneio/test_data.txt", // Reliable test endpoint
         |bytes_read, total_bytes| {
             if total_bytes > 0 {
                 let percentage = (bytes_read as f64 / total_bytes as f64) * 100.0;
-                print!("\rProgress: {:.1}% ({}/{})", percentage, bytes_read, total_bytes);
+                print!(
+                    "\rProgress: {:.1}% ({}/{})",
+                    percentage, bytes_read, total_bytes
+                );
             } else {
                 print!("\rDownloaded: {} bytes (size unknown)", bytes_read);
             }
         },
     )?;
 
-    if total_size > 0 {
-        println!("File size: {} bytes", total_size);
-    } else {
-        println!("File size: unknown (streaming)");
+    match total_size {
+        Some(size) => println!("File size: {} bytes", size),
+        None => println!("File size: unknown"),
     }
 
     let mut content = String::new();
     reader.read_to_string(&mut content)?;
-    
-    println!("\n✓ Successfully read {} bytes with progress tracking!", content.len());
-    println!("  Progress tracking now works even when total size is unknown!");
+
+    println!(
+        "\n✓ Successfully read {} bytes with progress tracking!",
+        content.len()
+    );
+    println!(
+        "  Content preview: {}",
+        content.lines().next().unwrap_or("(empty)")
+    );
 
     Ok(())
 }
