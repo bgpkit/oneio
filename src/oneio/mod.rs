@@ -106,9 +106,7 @@ pub fn get_cache_reader(
     if !dir_path.is_dir() {
         match std::fs::create_dir_all(dir_path) {
             Ok(_) => {}
-            Err(e) => {
-                return Err(OneIoError::Io(e))
-            }
+            Err(e) => return Err(OneIoError::Io(e)),
         }
     }
 
@@ -121,7 +119,7 @@ pub fn get_cache_reader(
             .to_string()
     });
 
-    let cache_file_path = format!("{}/{}", cache_dir, cache_file_name);
+    let cache_file_path = format!("{cache_dir}/{cache_file_name}");
 
     // if cache file already exists
     if !force_cache && Path::new(cache_file_path.as_str()).exists() {
@@ -238,7 +236,7 @@ where
 }
 
 /// Determines the content length of a file or URL
-/// 
+///
 /// This function attempts to get the total size of the content at the given path.
 /// It fails early if the size cannot be determined reliably.
 ///
@@ -257,7 +255,7 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
             // HEAD request to get Content-Length
             let client = reqwest::blocking::Client::new();
             let response = client.head(path).send()?;
-            
+
             response
                 .headers()
                 .get("content-length")
@@ -283,11 +281,18 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
             // S3 HEAD object
             let (bucket, key) = s3::s3_url_parse(path)?;
             let stats = s3::s3_stats(&bucket, &key)?;
-            Ok(stats.size)
+            // HeadObjectResult has content_length field
+            stats
+                .content_length
+                .ok_or_else(|| {
+                    OneIoError::NotSupported(
+                        "S3 object doesn't have content length information".to_string(),
+                    )
+                })
+                .map(|len| len as u64)
         }
         Some(_) => Err(OneIoError::NotSupported(format!(
-            "Protocol not supported for progress tracking: {}",
-            path
+            "Protocol not supported for progress tracking: {path}"
         ))),
         None => {
             // Local file
@@ -343,20 +348,256 @@ where
 {
     // Determine total size first - fail early if not possible
     let total_size = get_content_length(path)?;
-    
+
     // Get raw reader (before compression)
     let raw_reader = get_reader_raw(path)?;
-    
+
     // Wrap raw reader with progress tracking
     let progress_reader = ProgressReader::new(raw_reader, total_size, progress);
-    
+
     // Apply compression to the progress-wrapped reader
     let file_type = Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
-    
+
     let final_reader = get_compression_reader(Box::new(progress_reader), file_type)?;
-    
+
     Ok((final_reader, total_size))
+}
+
+// ================================
+// ASYNC SUPPORT (Phase 3)
+// ================================
+
+#[cfg(feature = "async")]
+use tokio::io::{AsyncRead, AsyncReadExt};
+
+/// Gets an async reader for the given file path
+///
+/// This is the async version of `get_reader()`. It supports all the same protocols
+/// and compression formats as the sync version.
+///
+/// # Arguments
+/// * `path` - File path or URL to read
+///
+/// # Returns
+/// * `Ok(impl AsyncRead)` - Async reader that handles decompression automatically
+/// * `Err(OneIoError)` - If file cannot be opened or protocol not supported
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use tokio::io::AsyncReadExt;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let mut reader = oneio::get_reader_async("https://example.com/data.gz").await?;
+///     
+///     let mut buffer = Vec::new();
+///     reader.read_to_end(&mut buffer).await?;
+///     
+///     println!("Read {} bytes", buffer.len());
+///     Ok(())
+/// }
+/// ```
+#[cfg(feature = "async")]
+pub async fn get_reader_async(path: &str) -> Result<Box<dyn AsyncRead + Send + Unpin>, OneIoError> {
+    // Get raw async reader
+    let raw_reader = get_async_reader_raw(path).await?;
+
+    // Apply compression
+    let file_type = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+
+    get_async_compression_reader(raw_reader, file_type)
+}
+
+/// Reads the entire content of a file asynchronously into a string
+///
+/// This is the async version of `read_to_string()`. It handles decompression
+/// automatically based on file extension.
+///
+/// # Arguments
+/// * `path` - File path or URL to read
+///
+/// # Returns
+/// * `Ok(String)` - File content as UTF-8 string
+/// * `Err(OneIoError)` - If file cannot be read or content is not valid UTF-8
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let content = oneio::read_to_string_async("https://example.com/data.json.gz").await?;
+///     println!("Content: {}", content);
+///     Ok(())
+/// }
+/// ```
+#[cfg(feature = "async")]
+pub async fn read_to_string_async(path: &str) -> Result<String, OneIoError> {
+    let mut reader = get_reader_async(path).await?;
+    let mut content = String::new();
+    reader.read_to_string(&mut content).await?;
+    Ok(content)
+}
+
+/// Downloads a file asynchronously from a URL to a local path
+///
+/// This is the async version of `download()`. It supports all protocols and
+/// handles decompression if needed.
+///
+/// # Arguments
+/// * `url` - Source URL to download from
+/// * `path` - Local file path to save to
+///
+/// # Returns
+/// * `Ok(())` - Download completed successfully
+/// * `Err(OneIoError)` - If download fails or file cannot be written
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     oneio::download_async(
+///         "https://example.com/data.csv.gz",
+///         "local_data.csv.gz"
+///     ).await?;
+///     println!("Download complete!");
+///     Ok(())
+/// }
+/// ```
+#[cfg(feature = "async")]
+pub async fn download_async(url: &str, path: &str) -> Result<(), OneIoError> {
+    use tokio::fs::File;
+    use tokio::io::AsyncWriteExt;
+
+    let mut reader = get_reader_async(url).await?;
+    let mut file = File::create(path).await?;
+
+    let mut buffer = vec![0u8; 8192];
+    loop {
+        let bytes_read = reader.read(&mut buffer).await?;
+        if bytes_read == 0 {
+            break;
+        }
+        file.write_all(&buffer[..bytes_read]).await?;
+    }
+
+    file.flush().await?;
+    Ok(())
+}
+
+/// Gets a raw async reader for the given path (before compression)
+#[cfg(feature = "async")]
+async fn get_async_reader_raw(path: &str) -> Result<Box<dyn AsyncRead + Send + Unpin>, OneIoError> {
+    let raw_reader: Box<dyn AsyncRead + Send + Unpin> = match get_protocol(path) {
+        #[cfg(feature = "http")]
+        Some(protocol) if protocol == "http" || protocol == "https" => {
+            let response = reqwest::get(path).await?;
+            let bytes = response.bytes().await?;
+            Box::new(std::io::Cursor::new(bytes.to_vec()))
+        }
+        #[cfg(feature = "ftp")]
+        Some(protocol) if protocol == "ftp" => {
+            // FTP async not implemented yet - fall back to sync in spawn_blocking
+            let path = path.to_string();
+            let data = tokio::task::spawn_blocking(move || {
+                let mut reader = remote::get_ftp_reader_raw(&path)?;
+                let mut buffer = Vec::new();
+                std::io::Read::read_to_end(&mut reader, &mut buffer)?;
+                Ok::<Vec<u8>, OneIoError>(buffer)
+            })
+            .await
+            .map_err(|e| OneIoError::Network(Box::new(e)))??;
+            Box::new(std::io::Cursor::new(data))
+        }
+        #[cfg(feature = "s3")]
+        Some(protocol) if protocol == "s3" || protocol == "r2" => {
+            // S3 async not implemented yet - fall back to sync in spawn_blocking
+            let path = path.to_string();
+            let data = tokio::task::spawn_blocking(move || {
+                let (bucket, key) = s3::s3_url_parse(&path)?;
+                let mut reader = s3::s3_reader(&bucket, &key)?;
+                let mut buffer = Vec::new();
+                std::io::Read::read_to_end(&mut reader, &mut buffer)?;
+                Ok::<Vec<u8>, OneIoError>(buffer)
+            })
+            .await
+            .map_err(|e| OneIoError::Network(Box::new(e)))??;
+            Box::new(std::io::Cursor::new(data))
+        }
+        Some(_) => {
+            return Err(OneIoError::NotSupported(format!(
+                "Async support not available for protocol in path: {path}"
+            )));
+        }
+        None => {
+            // Local file
+            use tokio::fs::File;
+            let file = File::open(path).await?;
+            Box::new(file)
+        }
+    };
+    Ok(raw_reader)
+}
+
+/// Applies async decompression based on file extension
+#[cfg(feature = "async")]
+fn get_async_compression_reader(
+    reader: Box<dyn AsyncRead + Send + Unpin>,
+    file_type: &str,
+) -> Result<Box<dyn AsyncRead + Send + Unpin>, OneIoError> {
+    match file_type {
+        #[cfg(all(feature = "async", feature = "gz"))]
+        "gz" | "gzip" => {
+            use async_compression::tokio::bufread::GzipDecoder;
+            use tokio::io::BufReader;
+            let buf_reader = BufReader::new(reader);
+            let decoder = GzipDecoder::new(buf_reader);
+            Ok(Box::new(decoder))
+        }
+        #[cfg(all(feature = "async", feature = "bz"))]
+        "bz" | "bz2" => {
+            use async_compression::tokio::bufread::BzDecoder;
+            use tokio::io::BufReader;
+            let buf_reader = BufReader::new(reader);
+            let decoder = BzDecoder::new(buf_reader);
+            Ok(Box::new(decoder))
+        }
+        #[cfg(all(feature = "async", feature = "zstd"))]
+        "zst" | "zstd" => {
+            use async_compression::tokio::bufread::ZstdDecoder;
+            use tokio::io::BufReader;
+            let buf_reader = BufReader::new(reader);
+            let decoder = ZstdDecoder::new(buf_reader);
+            Ok(Box::new(decoder))
+        }
+        #[cfg(all(feature = "async", feature = "lz"))]
+        "lz4" | "lz" => {
+            // LZ4 doesn't have async support in async-compression
+            // Use spawn_blocking for sync decompression
+            Err(OneIoError::NotSupported(
+                "LZ4 async decompression not yet supported - use spawn_blocking with sync version"
+                    .to_string(),
+            ))
+        }
+        #[cfg(all(feature = "async", feature = "xz"))]
+        "xz" | "xz2" => {
+            // XZ doesn't have async support in async-compression
+            // Use spawn_blocking for sync decompression
+            Err(OneIoError::NotSupported(
+                "XZ async decompression not yet supported - use spawn_blocking with sync version"
+                    .to_string(),
+            ))
+        }
+        _ => {
+            // No compression
+            Ok(reader)
+        }
+    }
 }

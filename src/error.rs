@@ -6,11 +6,11 @@ pub enum OneIoError {
     /// All IO-related errors (file system, EOF, etc.)
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     /// All network/remote operation errors (HTTP, FTP, S3, JSON parsing)
     #[error("{0}")]
     Network(Box<dyn std::error::Error + Send + Sync>),
-    
+
     /// Feature not supported/compiled
     #[error("Not supported: {0}")]
     NotSupported(String),

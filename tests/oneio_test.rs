@@ -154,8 +154,8 @@ fn test_read_404() {
 
 #[test]
 fn test_progress_tracking_local() {
-    use std::sync::{Arc, Mutex};
     use std::io::Read;
+    use std::sync::{Arc, Mutex};
 
     // Track progress calls
     let progress_calls = Arc::new(Mutex::new(Vec::<(u64, u64)>::new()));
@@ -166,8 +166,9 @@ fn test_progress_tracking_local() {
         "tests/test_data.txt.gz",
         move |bytes_read, total_bytes| {
             calls_clone.lock().unwrap().push((bytes_read, total_bytes));
-        }
-    ).unwrap();
+        },
+    )
+    .unwrap();
 
     assert!(total_size > 0, "Total size should be greater than 0");
 
@@ -178,19 +179,25 @@ fn test_progress_tracking_local() {
 
     // Check that progress was tracked
     let calls = progress_calls.lock().unwrap();
-    assert!(!calls.is_empty(), "Progress callback should have been called");
-    
+    assert!(
+        !calls.is_empty(),
+        "Progress callback should have been called"
+    );
+
     // Verify progress calls are reasonable
     let (last_bytes, last_total) = calls.last().unwrap();
     assert_eq!(*last_total, total_size, "Total should match in callbacks");
-    assert!(*last_bytes <= total_size, "Bytes read should not exceed total");
+    assert!(
+        *last_bytes <= total_size,
+        "Bytes read should not exceed total"
+    );
     assert!(*last_bytes > 0, "Should have read some bytes");
 }
 
-#[test] 
+#[test]
 fn test_progress_tracking_remote() {
-    use std::sync::{Arc, Mutex};
     use std::io::Read;
+    use std::sync::{Arc, Mutex};
 
     // Track progress calls
     let progress_calls = Arc::new(Mutex::new(Vec::<(u64, u64)>::new()));
@@ -201,7 +208,7 @@ fn test_progress_tracking_remote() {
         "https://spaces.bgpkit.org/oneio/test_data.txt",
         move |bytes_read, total_bytes| {
             calls_clone.lock().unwrap().push((bytes_read, total_bytes));
-        }
+        },
     );
 
     match result {
@@ -215,8 +222,11 @@ fn test_progress_tracking_remote() {
 
             // Check progress tracking
             let calls = progress_calls.lock().unwrap();
-            assert!(!calls.is_empty(), "Progress callback should have been called");
-            
+            assert!(
+                !calls.is_empty(),
+                "Progress callback should have been called"
+            );
+
             let (last_bytes, last_total) = calls.last().unwrap();
             assert_eq!(*last_total, total_size);
             assert!(*last_bytes <= total_size);
@@ -231,13 +241,12 @@ fn test_progress_tracking_remote() {
 
 #[test]
 fn test_progress_tracking_content_length_missing() {
-
     // Test with a URL that likely doesn't provide Content-Length
     let result = oneio::get_reader_with_progress(
         "https://httpbin.org/stream/10", // This endpoint doesn't provide Content-Length
         |_bytes_read, _total_bytes| {
             // This callback should never be called
-        }
+        },
     );
 
     // Should fail with NotSupported error
@@ -255,8 +264,173 @@ fn test_get_content_length_local() {
     // Test local file content length
     let size = oneio::get_content_length("tests/test_data.txt.gz").unwrap();
     assert!(size > 0, "Local file should have a size greater than 0");
-    
+
     // Verify it matches filesystem metadata
     let metadata = std::fs::metadata("tests/test_data.txt.gz").unwrap();
-    assert_eq!(size, metadata.len(), "Content length should match file metadata");
+    assert_eq!(
+        size,
+        metadata.len(),
+        "Content length should match file metadata"
+    );
+}
+
+// ================================
+// ASYNC TESTS (Phase 3)
+// ================================
+
+#[cfg(feature = "async")]
+#[tokio::test]
+async fn test_async_reader_local() {
+    use tokio::io::AsyncReadExt;
+
+    // Test async reading with different compression formats
+    let mut reader = oneio::get_reader_async("tests/test_data.txt")
+        .await
+        .unwrap();
+    let mut content = String::new();
+    reader.read_to_string(&mut content).await.unwrap();
+    assert_eq!(content.trim(), TEST_TEXT.trim());
+
+    // Test with gzip
+    let mut reader = oneio::get_reader_async("tests/test_data.txt.gz")
+        .await
+        .unwrap();
+    let mut content = String::new();
+    reader.read_to_string(&mut content).await.unwrap();
+    assert_eq!(content.trim(), TEST_TEXT.trim());
+
+    // Test with bzip2
+    let mut reader = oneio::get_reader_async("tests/test_data.txt.bz2")
+        .await
+        .unwrap();
+    let mut content = String::new();
+    reader.read_to_string(&mut content).await.unwrap();
+    assert_eq!(content.trim(), TEST_TEXT.trim());
+
+    // Test with zstd
+    let mut reader = oneio::get_reader_async("tests/test_data.txt.zst")
+        .await
+        .unwrap();
+    let mut content = String::new();
+    reader.read_to_string(&mut content).await.unwrap();
+    assert_eq!(content.trim(), TEST_TEXT.trim());
+}
+
+#[cfg(feature = "async")]
+#[tokio::test]
+async fn test_async_read_to_string() {
+    // Test async read_to_string with compression
+    let content = oneio::read_to_string_async("tests/test_data.txt.gz")
+        .await
+        .unwrap();
+    assert_eq!(content.trim(), TEST_TEXT.trim());
+
+    // Test with different formats
+    let content = oneio::read_to_string_async("tests/test_data.txt.bz2")
+        .await
+        .unwrap();
+    assert_eq!(content.trim(), TEST_TEXT.trim());
+
+    let content = oneio::read_to_string_async("tests/test_data.txt.zst")
+        .await
+        .unwrap();
+    assert_eq!(content.trim(), TEST_TEXT.trim());
+}
+
+#[cfg(feature = "async")]
+#[tokio::test]
+async fn test_async_download() {
+    use std::path::Path;
+
+    // Test async download
+    let download_path = "/tmp/test_async_download.txt";
+
+    // Clean up any existing file
+    let _ = std::fs::remove_file(download_path);
+
+    // Download with async
+    oneio::download_async(
+        "https://spaces.bgpkit.org/oneio/test_data.txt",
+        download_path,
+    )
+    .await
+    .unwrap();
+
+    // Verify the file was downloaded
+    assert!(Path::new(download_path).exists());
+
+    // Verify content
+    let content = std::fs::read_to_string(download_path).unwrap();
+    assert_eq!(content.trim(), TEST_TEXT.trim());
+
+    // Clean up
+    let _ = std::fs::remove_file(download_path);
+}
+
+#[cfg(feature = "async")]
+#[tokio::test]
+async fn test_async_unsupported_compression() {
+    // Test that unsupported async compression formats return appropriate errors
+
+    // LZ4 should return NotSupported for async when lz feature is enabled
+    #[cfg(feature = "lz")]
+    {
+        match oneio::get_reader_async("tests/test_data.txt.lz4").await {
+            Err(oneio::OneIoError::NotSupported(msg)) => {
+                assert!(msg.contains("LZ4") || msg.contains("not yet supported"));
+            }
+            Ok(_) => panic!("Expected LZ4 async to be unsupported"),
+            Err(e) => panic!("Expected NotSupported error, got: {:?}", e),
+        }
+    }
+
+    // XZ should return NotSupported for async when xz feature is enabled
+    #[cfg(feature = "xz")]
+    {
+        match oneio::get_reader_async("tests/test_data.txt.xz").await {
+            Err(oneio::OneIoError::NotSupported(msg)) => {
+                assert!(msg.contains("XZ") || msg.contains("not yet supported"));
+            }
+            Ok(_) => panic!("Expected XZ async to be unsupported"),
+            Err(e) => panic!("Expected NotSupported error, got: {:?}", e),
+        }
+    }
+
+    // When features are not enabled, compression should be treated as no compression
+    #[cfg(not(feature = "lz"))]
+    {
+        // Without lz feature, .lz4 files are treated as uncompressed
+        match oneio::get_reader_async("tests/test_data.txt.lz4").await {
+            Ok(_) => {} // This is expected - treated as uncompressed file
+            Err(e) => println!("Note: LZ4 test without feature enabled: {:?}", e),
+        }
+    }
+
+    #[cfg(not(feature = "xz"))]
+    {
+        // Without xz feature, .xz files are treated as uncompressed
+        match oneio::get_reader_async("tests/test_data.txt.xz").await {
+            Ok(_) => {} // This is expected - treated as uncompressed file
+            Err(e) => println!("Note: XZ test without feature enabled: {:?}", e),
+        }
+    }
+}
+
+#[cfg(feature = "async")]
+#[tokio::test]
+async fn test_async_remote_http() {
+    use tokio::io::AsyncReadExt;
+
+    // Test async HTTP reading
+    match oneio::get_reader_async("https://spaces.bgpkit.org/oneio/test_data.txt").await {
+        Ok(mut reader) => {
+            let mut content = String::new();
+            reader.read_to_string(&mut content).await.unwrap();
+            assert_eq!(content.trim(), TEST_TEXT.trim());
+        }
+        Err(e) => {
+            // Network issues are acceptable in tests
+            println!("Async HTTP test skipped due to network error: {:?}", e);
+        }
+    }
 }
