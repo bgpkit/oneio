@@ -107,10 +107,7 @@ pub fn get_cache_reader(
         match std::fs::create_dir_all(dir_path) {
             Ok(_) => {}
             Err(e) => {
-                return Err(OneIoError::CacheIoError(format!(
-                    "cache directory creation failed: {}",
-                    e
-                )))
+                return Err(OneIoError::Io(e))
             }
         }
     }

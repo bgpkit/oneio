@@ -85,7 +85,7 @@ pub fn s3_env_check() -> Result<(), OneIoError> {
 pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
     let parts = path.split('/').collect::<Vec<&str>>();
     if parts.len() < 3 {
-        return Err(OneIoError::S3UrlError(path.to_string()));
+        return Err(OneIoError::NotSupported(format!("Invalid S3 URL: {}", path)));
     }
     let bucket = parts[2];
     let key = parts[3..].join("/");
@@ -278,7 +278,7 @@ pub fn s3_delete(bucket: &str, s3_path: &str) -> Result<(), OneIoError> {
 ///
 /// # Errors
 ///
-/// The function can return `OneIoError::S3DownloadError` if the HTTP response
+/// The function can return `OneIoError::Network` if the HTTP response
 /// status code is not in the range of 200 to 299 (inclusive).
 ///
 /// # Example
@@ -303,7 +303,7 @@ pub fn s3_download(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), O
     let res: u16 = bucket.get_object_to_writer(s3_path, &mut output_file)?;
     match res {
         200..=299 => Ok(()),
-        _ => Err(OneIoError::S3DownloadError(res)),
+        _ => Err(OneIoError::Network(Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("S3 HTTP error: {}", res))))),
     }
 }
 
@@ -345,7 +345,7 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
     let (head_object, code): (HeadObjectResult, u16) = bucket.head_object(path)?;
     match code {
         200..=299 => Ok(head_object),
-        _ => Err(OneIoError::S3DownloadError(code)),
+        _ => Err(OneIoError::Network(Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("S3 HTTP error: {}", code))))),
     }
 }
 
@@ -359,7 +359,7 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
 /// # Returns
 ///
 /// Returns `Ok(true)` if the file exists, `Ok(false)` if the file does not exist,
-/// or an `Err` containing a `OneIoError::S3DownloadError` if there was an error
+/// or an `Err` containing a `OneIoError::Network` if there was an error
 /// checking the file's existence.
 ///
 /// # Example
@@ -375,14 +375,20 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
 /// }
 /// ```
 pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
-    if let Err(OneIoError::S3DownloadError(code)) = s3_stats(bucket, path) {
-        if code == 404 {
-            Ok(false)
-        } else {
-            Err(OneIoError::S3DownloadError(code))
+    match s3_stats(bucket, path) {
+        Ok(_) => Ok(true),
+        Err(err) => {
+            // Check if this is a 404-like network error
+            if let OneIoError::Network(boxed_err) = &err {
+                if boxed_err.to_string().contains("404") || boxed_err.to_string().contains("not found") {
+                    Ok(false)
+                } else {
+                    Err(err)
+                }
+            } else {
+                Err(err)
+            }
         }
-    } else {
-        Ok(true)
     }
 }
 
