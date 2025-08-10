@@ -223,7 +223,7 @@ oneio::download(
 
 #### S3-related operations (needs `s3` feature flag)
 
-```rust,no_run
+```rust,ignore
 use oneio::s3::*;
 
 // upload to S3
