@@ -57,37 +57,41 @@ rust-s3 = { version = "0.34.0-rc4", optional = true, default-features = false, f
 clap = { version = "4.4", features = ["derive"], optional = true }
 tracing = { version = "0.1", optional = true }
 
+# feature: async (Phase 3)
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "io-util"], optional = true }
+async-compression = { version = "0.4", features = ["tokio"], optional = true }
+futures = { version = "0.3", optional = true }
+
 rustls_sys = { package = "rustls", version = "0.23", optional = true }
 
 
 [features]
-# default features include the library core and use rustls by default
-default = ["lib-core", "rustls"]
+# Simple, flat feature structure
+default = ["gz", "bz", "http"]
 
-# library core dependency to enable reading from local/remote with compressions enabled
-lib-core = ["remote", "compressions", "json"]
+# Transport features (TLS handled automatically by libraries)
+http = ["reqwest/default"]
+ftp = ["http", "suppaftp"] # ftp needs http
+s3 = ["rust-s3"]
 
-# remote IO features
-remote = ["http", "ftp"]
-http = ["reqwest"]
-ftp = ["http", "suppaftp"] # ftp also requires http feature on purpose
+# Compression features (independent)
+gz = ["flate2"]
+bz = ["bzip2"]
+lz = ["lz4"]
+xz = ["xz2"]
+zstd = ["dep:zstd"]
 
-# cli dependencies
-cli = [
-    # core dependency
-    "lib-core",
-    "rustls",
-    "s3",
-    "digest",
-    # CLI specific
-    "clap",
-    "tracing",
-]
+# Other features
+json = ["serde", "serde_json"]
+digest = ["ring", "hex"]
 
-# optional flags to select native-tls or rust-tls
+# CLI tool (includes common features)
+cli = ["clap", "tracing", "gz", "bz", "http", "s3", "digest"]
+
+# Advanced: TLS selection (only if explicitly needed)
 native-tls = [
-    "reqwest?/default-tls",
-    "suppaftp?/native-tls",
+    "reqwest?/native-tls",
+    "suppaftp?/native-tls", 
     "rust-s3?/sync-native-tls",
 ]
 rustls = [
@@ -96,20 +100,8 @@ rustls = [
     "rust-s3?/sync-rustls-tls"
 ]
 
-digest = ["ring", "hex"]
-
-# supported compression algorithms, which can be toggled on/off individually
-compressions = ["gz", "bz", "lz", "xz", "zstd"]
-gz = ["flate2"]
-bz = ["bzip2"]
-lz = ["lz4"]
-xz = ["xz2"]
-zstd = ["dep:zstd"]
-
-json = ["serde", "serde_json"]
-
-# s3 support, off by default
-s3 = ["rust-s3"]
+# Future: Async support (to be implemented in Phase 3)
+async = ["tokio", "async-compression", "futures"]
 
 [dev-dependencies]
 serde = { version = "1.0", features = ["derive"] }
