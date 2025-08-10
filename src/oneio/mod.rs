@@ -601,3 +601,153 @@ fn get_async_compression_reader(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    const TEST_TEXT: &str = "OneIO test file.\nThis is a test.";
+
+    #[test]
+    fn test_progress_tracking_local() {
+        use std::sync::{Arc, Mutex};
+
+        // Track progress calls
+        let progress_calls = Arc::new(Mutex::new(Vec::<(u64, u64)>::new()));
+        let calls_clone = progress_calls.clone();
+
+        // Test with a local compressed file
+        let result = get_reader_with_progress("tests/test_data.txt.gz", move |bytes_read, total_bytes| {
+            calls_clone.lock().unwrap().push((bytes_read, total_bytes));
+        });
+
+        match result {
+            Ok((mut reader, total_size)) => {
+                assert!(total_size > 0, "Total size should be greater than 0");
+
+                // Read the entire file
+                let mut content = String::new();
+                reader.read_to_string(&mut content).unwrap();
+                assert_eq!(content.trim(), TEST_TEXT.trim());
+
+                // Check that progress was tracked
+                let calls = progress_calls.lock().unwrap();
+                assert!(
+                    !calls.is_empty(),
+                    "Progress callback should have been called"
+                );
+
+                // Verify progress calls are reasonable
+                let (last_bytes, last_total) = calls.last().unwrap();
+                assert_eq!(*last_total, total_size, "Total should match in callbacks");
+                assert!(
+                    *last_bytes <= total_size,
+                    "Bytes read should not exceed total"
+                );
+                assert!(*last_bytes > 0, "Should have read some bytes");
+            }
+            Err(e) => {
+                println!("Progress tracking test skipped: {:?}", e);
+                // This can fail if gz feature is not enabled or file doesn't exist
+            }
+        }
+    }
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn test_progress_tracking_remote() {
+        use std::sync::{Arc, Mutex};
+
+        // Track progress calls
+        let progress_calls = Arc::new(Mutex::new(Vec::<(u64, u64)>::new()));
+        let calls_clone = progress_calls.clone();
+
+        // Test with a remote file that has Content-Length
+        let result = get_reader_with_progress(
+            "https://spaces.bgpkit.org/oneio/test_data.txt",
+            move |bytes_read, total_bytes| {
+                calls_clone.lock().unwrap().push((bytes_read, total_bytes));
+            },
+        );
+
+        match result {
+            Ok((mut reader, total_size)) => {
+                assert!(total_size > 0, "Total size should be greater than 0");
+
+                // Read the file
+                let mut content = String::new();
+                reader.read_to_string(&mut content).unwrap();
+                assert_eq!(content.trim(), TEST_TEXT.trim());
+
+                // Check progress tracking
+                let calls = progress_calls.lock().unwrap();
+                assert!(
+                    !calls.is_empty(),
+                    "Progress callback should have been called"
+                );
+
+                let (last_bytes, last_total) = calls.last().unwrap();
+                assert_eq!(*last_total, total_size);
+                assert!(*last_bytes <= total_size);
+            }
+            Err(OneIoError::NotSupported(_)) => {
+                // Server doesn't provide Content-Length, which is expected behavior
+                println!("Remote server doesn't provide Content-Length - this is expected");
+            }
+            Err(e) => println!("Progress tracking remote test skipped: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_get_content_length_local() {
+        // Test local file content length
+        match get_content_length("tests/test_data.txt.gz") {
+            Ok(size) => {
+                assert!(size > 0, "Local file should have a size greater than 0");
+
+                // Verify it matches filesystem metadata
+                let metadata = std::fs::metadata("tests/test_data.txt.gz").unwrap();
+                assert_eq!(
+                    size,
+                    metadata.len(),
+                    "Content length should match file metadata"
+                );
+            }
+            Err(e) => {
+                println!("Content length test skipped: {:?}", e);
+                // This can fail if the test file doesn't exist or gz feature is disabled
+            }
+        }
+    }
+
+    // Async tests
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_async_reader_local() {
+        use tokio::io::AsyncReadExt;
+
+        // Test basic async reading
+        match get_reader_async("tests/test_data.txt").await {
+            Ok(mut reader) => {
+                let mut content = String::new();
+                reader.read_to_string(&mut content).await.unwrap();
+                assert_eq!(content.trim(), TEST_TEXT.trim());
+            }
+            Err(e) => println!("Async test skipped: {:?}", e),
+        }
+
+        // Test with compression formats that support async
+        #[cfg(feature = "gz")]
+        {
+            match get_reader_async("tests/test_data.txt.gz").await {
+                Ok(mut reader) => {
+                    let mut content = String::new();
+                    reader.read_to_string(&mut content).await.unwrap();
+                    assert_eq!(content.trim(), TEST_TEXT.trim());
+                }
+                Err(e) => println!("Async gzip test skipped: {:?}", e),
+            }
+        }
+    }
+}

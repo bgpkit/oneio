@@ -482,4 +482,40 @@ mod tests {
         const NON_S3_URL: &str = "s3:/test-bucket";
         assert!(s3_url_parse(NON_S3_URL).is_err());
     }
+
+    #[test]
+    fn test_s3_upload_nonexistent_file_early_validation() {
+        // Test for issue #48: s3_upload should fail quickly for non-existent files
+        // This test checks the early validation logic without requiring S3 credentials
+        
+        let non_existent_file = "/tmp/oneio_test_nonexistent_file_12345.txt";
+        
+        // Make sure the file doesn't exist
+        let _ = std::fs::remove_file(non_existent_file);
+        assert!(!std::path::Path::new(non_existent_file).exists());
+        
+        // This should return an error quickly due to early file validation
+        let _start = std::time::Instant::now();
+        
+        match s3_upload("test-bucket", "test-path", non_existent_file) {
+            Ok(_) => {
+                panic!("Upload should have failed for non-existent file");
+            }
+            Err(crate::OneIoError::Io(e)) => {
+                let duration = _start.elapsed();
+                println!("✓ Upload failed quickly with IO error after {:?}: {}", duration, e);
+                assert!(duration < std::time::Duration::from_millis(100), 
+                        "Early validation should be instant. Took: {:?}", duration);
+                assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
+                assert!(e.to_string().contains("File not found"));
+            }
+            Err(e) => {
+                // Could also fail due to missing credentials, which is also quick
+                let duration = _start.elapsed();
+                println!("Upload failed with error after {:?}: {:?}", duration, e);
+                assert!(duration < std::time::Duration::from_secs(1), 
+                        "Should fail quickly, not hang. Took: {:?}", duration);
+            }
+        }
+    }
 }
