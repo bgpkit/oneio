@@ -151,3 +151,112 @@ fn test_read_404() {
     assert!(reader.is_ok());
     assert!(oneio::exists("https://spaces.bgpkit.org/oneio/test_data.json").unwrap());
 }
+
+#[test]
+fn test_progress_tracking_local() {
+    use std::sync::{Arc, Mutex};
+    use std::io::Read;
+
+    // Track progress calls
+    let progress_calls = Arc::new(Mutex::new(Vec::<(u64, u64)>::new()));
+    let calls_clone = progress_calls.clone();
+
+    // Test with a local compressed file
+    let (mut reader, total_size) = oneio::get_reader_with_progress(
+        "tests/test_data.txt.gz",
+        move |bytes_read, total_bytes| {
+            calls_clone.lock().unwrap().push((bytes_read, total_bytes));
+        }
+    ).unwrap();
+
+    assert!(total_size > 0, "Total size should be greater than 0");
+
+    // Read the entire file
+    let mut content = String::new();
+    reader.read_to_string(&mut content).unwrap();
+    assert_eq!(content.trim(), TEST_TEXT.trim());
+
+    // Check that progress was tracked
+    let calls = progress_calls.lock().unwrap();
+    assert!(!calls.is_empty(), "Progress callback should have been called");
+    
+    // Verify progress calls are reasonable
+    let (last_bytes, last_total) = calls.last().unwrap();
+    assert_eq!(*last_total, total_size, "Total should match in callbacks");
+    assert!(*last_bytes <= total_size, "Bytes read should not exceed total");
+    assert!(*last_bytes > 0, "Should have read some bytes");
+}
+
+#[test] 
+fn test_progress_tracking_remote() {
+    use std::sync::{Arc, Mutex};
+    use std::io::Read;
+
+    // Track progress calls
+    let progress_calls = Arc::new(Mutex::new(Vec::<(u64, u64)>::new()));
+    let calls_clone = progress_calls.clone();
+
+    // Test with a remote file that has Content-Length
+    let result = oneio::get_reader_with_progress(
+        "https://spaces.bgpkit.org/oneio/test_data.txt",
+        move |bytes_read, total_bytes| {
+            calls_clone.lock().unwrap().push((bytes_read, total_bytes));
+        }
+    );
+
+    match result {
+        Ok((mut reader, total_size)) => {
+            assert!(total_size > 0, "Total size should be greater than 0");
+
+            // Read the file
+            let mut content = String::new();
+            reader.read_to_string(&mut content).unwrap();
+            assert_eq!(content.trim(), TEST_TEXT.trim());
+
+            // Check progress tracking
+            let calls = progress_calls.lock().unwrap();
+            assert!(!calls.is_empty(), "Progress callback should have been called");
+            
+            let (last_bytes, last_total) = calls.last().unwrap();
+            assert_eq!(*last_total, total_size);
+            assert!(*last_bytes <= total_size);
+        }
+        Err(oneio::OneIoError::NotSupported(_)) => {
+            // Server doesn't provide Content-Length, which is expected behavior
+            println!("Remote server doesn't provide Content-Length - this is expected");
+        }
+        Err(e) => panic!("Unexpected error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_progress_tracking_content_length_missing() {
+
+    // Test with a URL that likely doesn't provide Content-Length
+    let result = oneio::get_reader_with_progress(
+        "https://httpbin.org/stream/10", // This endpoint doesn't provide Content-Length
+        |_bytes_read, _total_bytes| {
+            // This callback should never be called
+        }
+    );
+
+    // Should fail with NotSupported error
+    match result {
+        Err(oneio::OneIoError::NotSupported(msg)) => {
+            assert!(msg.contains("Content-Length") || msg.contains("file size"));
+        }
+        Err(e) => panic!("Expected NotSupported error, got: {:?}", e),
+        Ok(_) => panic!("Expected error when Content-Length is missing"),
+    }
+}
+
+#[test]
+fn test_get_content_length_local() {
+    // Test local file content length
+    let size = oneio::get_content_length("tests/test_data.txt.gz").unwrap();
+    assert!(size > 0, "Local file should have a size greater than 0");
+    
+    // Verify it matches filesystem metadata
+    let metadata = std::fs::metadata("tests/test_data.txt.gz").unwrap();
+    assert_eq!(size, metadata.len(), "Content length should match file metadata");
+}

@@ -197,3 +197,166 @@ pub fn exists(path: &str) -> Result<bool, OneIoError> {
         Ok(Path::new(path).exists())
     }
 }
+
+/// Progress tracking callback type
+pub type ProgressCallback<F> = F;
+
+/// Progress reader wrapper that tracks bytes read
+pub struct ProgressReader<R, F> {
+    inner: R,
+    bytes_read: u64,
+    total_size: u64,
+    callback: F,
+}
+
+impl<R: Read, F> ProgressReader<R, F>
+where
+    F: Fn(u64, u64) + Send,
+{
+    fn new(inner: R, total_size: u64, callback: F) -> Self {
+        Self {
+            inner,
+            bytes_read: 0,
+            total_size,
+            callback,
+        }
+    }
+}
+
+impl<R: Read, F> Read for ProgressReader<R, F>
+where
+    F: Fn(u64, u64) + Send,
+{
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let bytes_read = self.inner.read(buf)?;
+        if bytes_read > 0 {
+            self.bytes_read += bytes_read as u64;
+            (self.callback)(self.bytes_read, self.total_size);
+        }
+        Ok(bytes_read)
+    }
+}
+
+/// Determines the content length of a file or URL
+/// 
+/// This function attempts to get the total size of the content at the given path.
+/// It fails early if the size cannot be determined reliably.
+///
+/// # Arguments
+/// * `path` - File path or URL to check
+///
+/// # Returns
+/// * `Ok(u64)` - Total content size in bytes
+/// * `Err(OneIoError::NotSupported)` - If size cannot be determined
+/// * `Err(OneIoError::Network)` - If network error occurs
+/// * `Err(OneIoError::Io)` - If file system error occurs
+pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
+    match get_protocol(path) {
+        #[cfg(feature = "http")]
+        Some(protocol) if protocol == "http" || protocol == "https" => {
+            // HEAD request to get Content-Length
+            let client = reqwest::blocking::Client::new();
+            let response = client.head(path).send()?;
+            
+            response
+                .headers()
+                .get("content-length")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse().ok())
+                .ok_or_else(|| {
+                    OneIoError::NotSupported(
+                        "Cannot determine file size - server doesn't provide Content-Length"
+                            .to_string(),
+                    )
+                })
+        }
+        #[cfg(feature = "ftp")]
+        Some(protocol) if protocol == "ftp" => {
+            // For FTP, we'll need to implement SIZE command
+            // For now, return not supported
+            Err(OneIoError::NotSupported(
+                "FTP size determination not yet implemented".to_string(),
+            ))
+        }
+        #[cfg(feature = "s3")]
+        Some(protocol) if protocol == "s3" || protocol == "r2" => {
+            // S3 HEAD object
+            let (bucket, key) = s3::s3_url_parse(path)?;
+            let stats = s3::s3_stats(&bucket, &key)?;
+            Ok(stats.size)
+        }
+        Some(_) => Err(OneIoError::NotSupported(format!(
+            "Protocol not supported for progress tracking: {}",
+            path
+        ))),
+        None => {
+            // Local file
+            let metadata = std::fs::metadata(path)?;
+            Ok(metadata.len())
+        }
+    }
+}
+
+/// Gets a reader with progress tracking that reports bytes read and total file size
+///
+/// This function returns both a reader and the total file size. It fails early if the
+/// total size cannot be determined (e.g., streaming endpoints without Content-Length).
+///
+/// The progress callback receives (bytes_read, total_bytes) and tracks raw bytes read
+/// from the source before any decompression.
+///
+/// # Arguments
+/// * `path` - File path or URL to read
+/// * `progress` - Callback function called with (bytes_read, total_bytes)
+///
+/// # Returns
+/// * `Ok((reader, total_size))` - Reader and total file size in bytes
+/// * `Err(OneIoError::NotSupported)` - If file size cannot be determined
+/// * `Err(OneIoError::Network)` - If network error occurs
+/// * `Err(OneIoError::Io)` - If file system error occurs
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use oneio;
+/// use std::io::Read;
+///
+/// let (mut reader, total_size) = oneio::get_reader_with_progress(
+///     "https://example.com/file.gz",
+///     |bytes_read, total_bytes| {
+///         let percent = (bytes_read as f64 / total_bytes as f64) * 100.0;
+///         println!("Progress: {:.1}% ({}/{})", percent, bytes_read, total_bytes);
+///     }
+/// )?;
+///
+/// println!("File size: {} bytes", total_size);
+/// let mut content = String::new();
+/// reader.read_to_string(&mut content)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn get_reader_with_progress<F>(
+    path: &str,
+    progress: F,
+) -> Result<(Box<dyn Read + Send>, u64), OneIoError>
+where
+    F: Fn(u64, u64) + Send + 'static,
+{
+    // Determine total size first - fail early if not possible
+    let total_size = get_content_length(path)?;
+    
+    // Get raw reader (before compression)
+    let raw_reader = get_reader_raw(path)?;
+    
+    // Wrap raw reader with progress tracking
+    let progress_reader = ProgressReader::new(raw_reader, total_size, progress);
+    
+    // Apply compression to the progress-wrapped reader
+    let file_type = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    
+    let final_reader = get_compression_reader(Box::new(progress_reader), file_type)?;
+    
+    Ok((final_reader, total_size))
+}
