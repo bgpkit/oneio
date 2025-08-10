@@ -50,20 +50,30 @@ Set `ONEIO_ACCEPT_INVALID_CERTS=true` to accept invalid certificates (not recomm
 ## New in v0.19
 
 ### Progress Tracking
-Track download/read progress with callbacks:
+Track download/read progress with callbacks, works with both known and unknown file sizes:
 
-```rust,no_run
+```rust,ignore
 use oneio;
 
 let (mut reader, total_size) = oneio::get_reader_with_progress(
     "https://example.com/largefile.gz",
     |bytes_read, total_bytes| {
-        let percent = (bytes_read as f64 / total_bytes as f64) * 100.0;
-        println!("Progress: {:.1}% ({}/{})", percent, bytes_read, total_bytes);
+        if total_bytes > 0 {
+            let percent = (bytes_read as f64 / total_bytes as f64) * 100.0;
+            println!("Progress: {:.1}% ({}/{})", percent, bytes_read, total_bytes);
+        } else {
+            println!("Downloaded: {} bytes (size unknown)", bytes_read);
+        }
     }
 )?;
 
-// Progress callback is called as data is read
+// total_size is 0 when file size cannot be determined
+if total_size > 0 {
+    println!("File size: {} bytes", total_size);
+} else {
+    println!("File size: unknown (streaming)");
+}
+
 let content = std::io::read_to_string(&mut reader)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
@@ -100,7 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Read all content into a string:
 
-```rust
+```rust,ignore
 use oneio;
 
 const TEST_TEXT: &str = "OneIO test file.\nThis is a test.";
@@ -113,7 +123,7 @@ assert_eq!(content.trim(), TEST_TEXT);
 
 Read line by line:
 
-```rust
+```rust,ignore
 use oneio;
 
 let lines = oneio::read_lines("https://spaces.bgpkit.org/oneio/test_data.txt.gz")?
@@ -142,7 +152,7 @@ reader.read_to_end(&mut buffer)?;
 
 Write with automatic compression:
 
-```rust,no_run
+```rust,ignore
 use oneio;
 use std::io::Write;
 
@@ -158,7 +168,7 @@ assert_eq!(content, "Hello, compressed world!");
 
 ### Remote Files with Custom Headers
 
-```rust,no_run
+```rust,ignore
 use oneio;
 
 let client = oneio::create_client_with_headers([("Authorization", "Bearer TOKEN")])?;

@@ -56,7 +56,7 @@ Set `ONEIO_ACCEPT_INVALID_CERTS=true` to accept invalid certificates (not recomm
 ### New in v0.19
 
 #### Progress Tracking
-Track download/read progress with callbacks:
+Track download/read progress with callbacks, works with both known and unknown file sizes:
 
 ```rust
 use oneio;
@@ -64,12 +64,22 @@ use oneio;
 let (mut reader, total_size) = oneio::get_reader_with_progress(
     "https://example.com/largefile.gz",
     |bytes_read, total_bytes| {
-        let percent = (bytes_read as f64 / total_bytes as f64) * 100.0;
-        println!("Progress: {:.1}% ({}/{})", percent, bytes_read, total_bytes);
+        if total_bytes > 0 {
+            let percent = (bytes_read as f64 / total_bytes as f64) * 100.0;
+            println!("Progress: {:.1}% ({}/{})", percent, bytes_read, total_bytes);
+        } else {
+            println!("Downloaded: {} bytes (size unknown)", bytes_read);
+        }
     }
 )?;
 
-// Progress callback is called as data is read
+// total_size is 0 when file size cannot be determined
+if total_size > 0 {
+    println!("File size: {} bytes", total_size);
+} else {
+    println!("File size: unknown (streaming)");
+}
+
 let content = std::io::read_to_string(&mut reader)?;
 ```
 

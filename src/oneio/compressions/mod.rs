@@ -2,9 +2,7 @@
 //!
 //! This module provides a unified interface for reading and writing files with various compression
 //! formats, including gzip, bzip2, lz4, xz, and zstd. The available algorithms depend on enabled
-//! Cargo features. Each compression algorithm implements the [`OneIOCompression`] trait, which
-//! defines methods for creating readers and writers that transparently handle compression and
-//! decompression. Utility functions are provided to select the appropriate algorithm based on file
+//! Cargo features. Utility functions are provided to select the appropriate algorithm based on file
 //! suffixes.
 
 use crate::OneIoError;
@@ -22,25 +20,6 @@ pub(crate) mod xz;
 #[cfg(feature = "zstd")]
 pub(crate) mod zstd;
 
-/// Trait for compression algorithms used in OneIO.
-///
-/// This trait defines the interface for compression and decompression implementations.
-/// Types implementing this trait provide methods to create readers and writers that
-/// transparently handle compression or decompression for supported formats.
-///
-/// # Required Methods
-///
-/// - `get_reader`: Returns a boxed reader that decompresses data from the given reader.
-/// - `get_writer`: Returns a boxed writer that compresses data to the given writer.
-///
-/// # Errors
-///
-/// Both methods return a `Result` that contains an error if the compression or decompression
-/// stream could not be created.
-pub trait OneIOCompression {
-    fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError>;
-    fn get_writer(raw_writer: BufWriter<File>) -> Result<Box<dyn Write>, OneIoError>;
-}
 
 /// Returns a compression reader for the given file suffix.
 ///
@@ -73,15 +52,15 @@ pub(crate) fn get_compression_reader(
 ) -> Result<Box<dyn Read + Send>, OneIoError> {
     match file_suffix {
         #[cfg(feature = "gz")]
-        "gz" | "gzip" | "tgz" => gzip::OneIOGzip::get_reader(raw_reader),
+        "gz" | "gzip" | "tgz" => gzip::get_reader(raw_reader),
         #[cfg(feature = "bz")]
-        "bz2" | "bz" => bzip2::OneIOBzip2::get_reader(raw_reader),
+        "bz2" | "bz" => bzip2::get_reader(raw_reader),
         #[cfg(feature = "lz")]
-        "lz4" | "lz" => lz4::OneIOLz4::get_reader(raw_reader),
+        "lz4" | "lz" => lz4::get_reader(raw_reader),
         #[cfg(feature = "xz")]
-        "xz" | "xz2" | "lzma" => xz::OneIOXz::get_reader(raw_reader),
+        "xz" | "xz2" | "lzma" => xz::get_reader(raw_reader),
         #[cfg(feature = "zstd")]
-        "zst" | "zstd" => zstd::OneIOZstd::get_reader(raw_reader),
+        "zst" | "zstd" => zstd::get_reader(raw_reader),
         _ => {
             // unknown file type of file {}. return the raw bytes reader as is
             Ok(raw_reader)
@@ -120,15 +99,15 @@ pub(crate) fn get_compression_writer(
 ) -> Result<Box<dyn Write>, OneIoError> {
     match file_suffix {
         #[cfg(feature = "gz")]
-        "gz" | "gzip" | "tgz" => gzip::OneIOGzip::get_writer(raw_writer),
+        "gz" | "gzip" | "tgz" => gzip::get_writer(raw_writer),
         #[cfg(feature = "bz")]
-        "bz2" | "bz" => bzip2::OneIOBzip2::get_writer(raw_writer),
+        "bz2" | "bz" => bzip2::get_writer(raw_writer),
         #[cfg(feature = "lz")]
-        "lz4" | "lz" => lz4::OneIOLz4::get_writer(raw_writer),
+        "lz4" | "lz" => lz4::get_writer(raw_writer),
         #[cfg(feature = "xz")]
-        "xz" | "xz2" | "lzma" => xz::OneIOXz::get_writer(raw_writer),
+        "xz" | "xz2" | "lzma" => xz::get_writer(raw_writer),
         #[cfg(feature = "zstd")]
-        "zst" | "zstd" => zstd::OneIOZstd::get_writer(raw_writer),
+        "zst" | "zstd" => zstd::get_writer(raw_writer),
         _ => Ok(Box::new(raw_writer)),
     }
 }

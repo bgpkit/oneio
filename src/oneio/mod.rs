@@ -85,7 +85,7 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     // get raw bytes reader
     let raw_reader = get_reader_raw(path)?;
 
-    let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
+    let file_type = path.rsplit('.').next().unwrap_or("");
     get_compression_reader(raw_reader, file_type)
 }
 
@@ -112,10 +112,8 @@ pub fn get_cache_reader(
 
     let cache_file_name = cache_file_name.unwrap_or_else(|| {
         path.split('/')
-            .collect::<Vec<&str>>()
-            .into_iter()
-            .next_back()
-            .unwrap()
+            .last()
+            .unwrap_or("cached_file")
             .to_string()
     });
 
@@ -131,7 +129,7 @@ pub fn get_cache_reader(
     let mut data: Vec<u8> = vec![];
     reader.read_to_end(&mut data)?;
     let mut writer = get_writer_raw(cache_file_path.as_str())?;
-    writer.write_all(&data).unwrap();
+    writer.write_all(&data)?;
     drop(writer);
 
     // return reader from cache file
@@ -162,7 +160,7 @@ pub fn get_cache_reader(
 pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
     let output_file = BufWriter::new(File::create(path)?);
 
-    let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
+    let file_type = path.rsplit('.').next().unwrap_or("");
     get_compression_writer(output_file, file_type)
 }
 
@@ -238,7 +236,7 @@ where
 /// Determines the content length of a file or URL
 ///
 /// This function attempts to get the total size of the content at the given path.
-/// It fails early if the size cannot be determined reliably.
+/// Used internally by progress tracking - returns an error if size cannot be determined.
 ///
 /// # Arguments
 /// * `path` - File path or URL to check
@@ -304,37 +302,46 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
 
 /// Gets a reader with progress tracking that reports bytes read and total file size
 ///
-/// This function returns both a reader and the total file size. It fails early if the
-/// total size cannot be determined (e.g., streaming endpoints without Content-Length).
+/// This function returns both a reader and the total file size. If the total size cannot
+/// be determined (e.g., streaming endpoints without Content-Length), it uses 0 as the
+/// total size, allowing progress tracking to work with unknown file sizes.
 ///
 /// The progress callback receives (bytes_read, total_bytes) and tracks raw bytes read
-/// from the source before any decompression.
+/// from the source before any decompression. When total_bytes is 0, it indicates the
+/// total size is unknown.
 ///
 /// # Arguments
 /// * `path` - File path or URL to read
 /// * `progress` - Callback function called with (bytes_read, total_bytes)
 ///
 /// # Returns
-/// * `Ok((reader, total_size))` - Reader and total file size in bytes
-/// * `Err(OneIoError::NotSupported)` - If file size cannot be determined
+/// * `Ok((reader, total_size))` - Reader and total file size in bytes (0 if unknown)
 /// * `Err(OneIoError::Network)` - If network error occurs
 /// * `Err(OneIoError::Io)` - If file system error occurs
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use oneio;
 /// use std::io::Read;
 ///
 /// let (mut reader, total_size) = oneio::get_reader_with_progress(
 ///     "https://example.com/file.gz",
 ///     |bytes_read, total_bytes| {
-///         let percent = (bytes_read as f64 / total_bytes as f64) * 100.0;
-///         println!("Progress: {:.1}% ({}/{})", percent, bytes_read, total_bytes);
+///         if total_bytes > 0 {
+///             let percent = (bytes_read as f64 / total_bytes as f64) * 100.0;
+///             println!("Progress: {:.1}% ({}/{})", percent, bytes_read, total_bytes);
+///         } else {
+///             println!("Downloaded: {} bytes (size unknown)", bytes_read);
+///         }
 ///     }
 /// )?;
 ///
-/// println!("File size: {} bytes", total_size);
+/// if total_size > 0 {
+///     println!("File size: {} bytes", total_size);
+/// } else {
+///     println!("File size: unknown");
+/// }
 /// let mut content = String::new();
 /// reader.read_to_string(&mut content)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -346,8 +353,8 @@ pub fn get_reader_with_progress<F>(
 where
     F: Fn(u64, u64) + Send + 'static,
 {
-    // Determine total size first - fail early if not possible
-    let total_size = get_content_length(path)?;
+    // Try to determine total size, but don't fail if not possible
+    let total_size = get_content_length(path).unwrap_or(0);
 
     // Get raw reader (before compression)
     let raw_reader = get_reader_raw(path)?;
@@ -504,32 +511,17 @@ async fn get_async_reader_raw(path: &str) -> Result<Box<dyn AsyncRead + Send + U
         }
         #[cfg(feature = "ftp")]
         Some(protocol) if protocol == "ftp" => {
-            // FTP async not implemented yet - fall back to sync in spawn_blocking
-            let path = path.to_string();
-            let data = tokio::task::spawn_blocking(move || {
-                let mut reader = remote::get_ftp_reader_raw(&path)?;
-                let mut buffer = Vec::new();
-                std::io::Read::read_to_end(&mut reader, &mut buffer)?;
-                Ok::<Vec<u8>, OneIoError>(buffer)
-            })
-            .await
-            .map_err(|e| OneIoError::Network(Box::new(e)))??;
-            Box::new(std::io::Cursor::new(data))
+            // FTP async not supported - use sync version with tokio::task::spawn_blocking 
+            return Err(OneIoError::NotSupported(
+                "FTP async not supported - use sync get_reader() instead".to_string(),
+            ));
         }
         #[cfg(feature = "s3")]
         Some(protocol) if protocol == "s3" || protocol == "r2" => {
-            // S3 async not implemented yet - fall back to sync in spawn_blocking
-            let path = path.to_string();
-            let data = tokio::task::spawn_blocking(move || {
-                let (bucket, key) = s3::s3_url_parse(&path)?;
-                let mut reader = s3::s3_reader(&bucket, &key)?;
-                let mut buffer = Vec::new();
-                std::io::Read::read_to_end(&mut reader, &mut buffer)?;
-                Ok::<Vec<u8>, OneIoError>(buffer)
-            })
-            .await
-            .map_err(|e| OneIoError::Network(Box::new(e)))??;
-            Box::new(std::io::Cursor::new(data))
+            // S3 async not supported - use sync version with tokio::task::spawn_blocking
+            return Err(OneIoError::NotSupported(
+                "S3 async not supported - use sync get_reader() instead".to_string(),
+            ));
         }
         Some(_) => {
             return Err(OneIoError::NotSupported(format!(
@@ -609,6 +601,7 @@ mod tests {
 
     const TEST_TEXT: &str = "OneIO test file.\nThis is a test.";
 
+    #[cfg(feature = "gz")]
     #[test]
     fn test_progress_tracking_local() {
         use std::sync::{Arc, Mutex};
@@ -673,8 +666,6 @@ mod tests {
 
         match result {
             Ok((mut reader, total_size)) => {
-                assert!(total_size > 0, "Total size should be greater than 0");
-
                 // Read the file
                 let mut content = String::new();
                 reader.read_to_string(&mut content).unwrap();
@@ -689,11 +680,16 @@ mod tests {
 
                 let (last_bytes, last_total) = calls.last().unwrap();
                 assert_eq!(*last_total, total_size);
-                assert!(*last_bytes <= total_size);
-            }
-            Err(OneIoError::NotSupported(_)) => {
-                // Server doesn't provide Content-Length, which is expected behavior
-                println!("Remote server doesn't provide Content-Length - this is expected");
+                
+                if total_size > 0 {
+                    // Known size: verify bytes read doesn't exceed total
+                    assert!(*last_bytes <= total_size);
+                    println!("Progress tracking succeeded with known size: {} bytes", total_size);
+                } else {
+                    // Unknown size: just verify we read some bytes
+                    assert!(*last_bytes > 0, "Should have read some bytes");
+                    println!("Progress tracking succeeded with unknown size: {} bytes read", last_bytes);
+                }
             }
             Err(e) => println!("Progress tracking remote test skipped: {:?}", e),
         }

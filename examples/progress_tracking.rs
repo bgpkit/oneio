@@ -2,7 +2,8 @@
 //! Progress Tracking Example
 //!
 //! This example demonstrates how to use OneIO's progress tracking feature
-//! to monitor file download and reading progress.
+//! to monitor file download and reading progress. Progress tracking works
+//! with both known and unknown file sizes.
 
 use std::io::Read;
 
@@ -22,8 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     percentage_progress()?;
 
     // Example 4: Handling files without size information
-    println!("\n=== Example 4: Error Handling ===");
-    error_handling_example()?;
+    println!("\n=== Example 4: Unknown Size Progress ===");
+    unknown_size_example()?;
 
     Ok(())
 }
@@ -59,11 +60,15 @@ fn formatted_progress() -> Result<(), Box<dyn std::error::Error>> {
 
     let (mut reader, total_size) =
         oneio::get_reader_with_progress("tests/test_data.txt.bz2", |bytes_read, total_bytes| {
-            print!(
-                "\rProgress: {} / {} ",
-                format_bytes(bytes_read),
-                format_bytes(total_bytes)
-            );
+            if total_bytes > 0 {
+                print!(
+                    "\rProgress: {} / {} ",
+                    format_bytes(bytes_read),
+                    format_bytes(total_bytes)
+                );
+            } else {
+                print!("\rDownloaded: {} ", format_bytes(bytes_read));
+            }
             use std::io::Write;
             std::io::stdout().flush().unwrap();
         })?;
@@ -83,16 +88,24 @@ fn formatted_progress() -> Result<(), Box<dyn std::error::Error>> {
 fn percentage_progress() -> Result<(), Box<dyn std::error::Error>> {
     let (mut reader, total_size) =
         oneio::get_reader_with_progress("tests/test_data.txt.lz4", |bytes_read, total_bytes| {
-            let percentage = (bytes_read as f64 / total_bytes as f64) * 100.0;
-            print!(
-                "\rProgress: {:.1}% ({}/{})",
-                percentage, bytes_read, total_bytes
-            );
+            if total_bytes > 0 {
+                let percentage = (bytes_read as f64 / total_bytes as f64) * 100.0;
+                print!(
+                    "\rProgress: {:.1}% ({}/{})",
+                    percentage, bytes_read, total_bytes
+                );
+            } else {
+                print!("\rDownloaded: {} bytes (size unknown)", bytes_read);
+            }
             use std::io::Write;
             std::io::stdout().flush().unwrap();
         })?;
 
-    println!("Starting download of {} bytes...", total_size);
+    if total_size > 0 {
+        println!("Starting download of {} bytes...", total_size);
+    } else {
+        println!("Starting download of unknown size...");
+    }
 
     let mut content = Vec::new();
     reader.read_to_end(&mut content)?;
@@ -102,47 +115,33 @@ fn percentage_progress() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn error_handling_example() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Testing progress tracking with file that has no size info...");
+fn unknown_size_example() -> Result<(), Box<dyn std::error::Error>> {
+    println!("Testing progress tracking with streaming endpoint (unknown size)...");
 
-    // Try to track progress on a streaming endpoint (will fail)
-    match oneio::get_reader_with_progress(
-        "https://httpbin.org/stream/5", // Streaming endpoint without Content-Length
+    // Now progress tracking works even without Content-Length!
+    let (mut reader, total_size) = oneio::get_reader_with_progress(
+        "https://httpbin.org/stream/3", // Streaming endpoint without Content-Length
         |bytes_read, total_bytes| {
-            println!("Progress: {}/{}", bytes_read, total_bytes);
+            if total_bytes > 0 {
+                let percentage = (bytes_read as f64 / total_bytes as f64) * 100.0;
+                print!("\rProgress: {:.1}% ({}/{})", percentage, bytes_read, total_bytes);
+            } else {
+                print!("\rDownloaded: {} bytes (size unknown)", bytes_read);
+            }
         },
-    ) {
-        Ok((mut reader, total_size)) => {
-            println!("Unexpected success! Size: {}", total_size);
-            let mut content = String::new();
-            reader.read_to_string(&mut content)?;
-            println!("Content: {}", content);
-        }
-        Err(oneio::OneIoError::NotSupported(msg)) => {
-            println!("✓ Expected error: {}", msg);
-            println!(
-                "  This is the correct behavior - progress tracking fails when size is unknown"
-            );
-        }
-        Err(e) => {
-            println!("✗ Unexpected error: {:?}", e);
-        }
+    )?;
+
+    if total_size > 0 {
+        println!("File size: {} bytes", total_size);
+    } else {
+        println!("File size: unknown (streaming)");
     }
 
-    println!("\nFalling back to regular reader without progress...");
-    match oneio::get_reader("https://httpbin.org/stream/3") {
-        Ok(mut reader) => {
-            let mut content = String::new();
-            reader.read_to_string(&mut content)?;
-            println!(
-                "Successfully read {} bytes without progress tracking",
-                content.len()
-            );
-        }
-        Err(e) => {
-            println!("Failed to read without progress: {:?}", e);
-        }
-    }
+    let mut content = String::new();
+    reader.read_to_string(&mut content)?;
+    
+    println!("\n✓ Successfully read {} bytes with progress tracking!", content.len());
+    println!("  Progress tracking now works even when total size is unknown!");
 
     Ok(())
 }
