@@ -354,16 +354,12 @@ pub fn get_reader_with_progress<F>(
 where
     F: Fn(u64, u64) + Send + 'static,
 {
-    // Try to determine total size, but distinguish between 'unknown size' and 'failed to determine size'
+    // Try to determine total size, returning None when it cannot be determined
     let (total_size, size_option) = match get_content_length(path) {
         Ok(size) => (size, Some(size)),
-        Err(OneIoError::NotSupported(_)) => {
-            // Size cannot be determined (e.g., streaming endpoints) - this is expected for some cases
-            (0, None)
-        }
-        Err(e) => {
-            // Log the error for debugging purposes but continue with unknown size
-            eprintln!("Warning: Failed to determine content length for '{path}': {e}");
+        Err(_) => {
+            // Size cannot be determined (e.g., streaming endpoints, errors) - handle gracefully
+            // The Option<u64> return type clearly indicates when size is unknown
             (0, None)
         }
     };
