@@ -507,6 +507,12 @@ async fn get_async_reader_raw(path: &str) -> Result<Box<dyn AsyncRead + Send + U
     let raw_reader: Box<dyn AsyncRead + Send + Unpin> = match get_protocol(path) {
         #[cfg(feature = "http")]
         Some(protocol) if protocol == "http" || protocol == "https" => {
+            // TODO: Implement true streaming instead of loading entire response into memory
+            // This would require:
+            // 1. Adding "stream" feature to reqwest in Cargo.toml
+            // 2. Adding tokio-util dependency
+            // 3. Using response.bytes_stream() with tokio_util::io::StreamReader
+            // Current implementation loads entire response for simplicity
             let response = reqwest::get(path).await?;
             let bytes = response.bytes().await?;
             Box::new(std::io::Cursor::new(bytes))
