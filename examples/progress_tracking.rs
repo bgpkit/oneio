@@ -1,4 +1,3 @@
-#!/usr/bin/env rust-script
 //! Progress Tracking Example
 //!
 //! This example demonstrates how to use OneIO's progress tracking feature

@@ -400,7 +400,7 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
                         if let Ok(status_code) = code_str.parse::<u16>() {
                             return match status_code {
                                 404 => Ok(false), // Not Found
-                                403 => Ok(false), // Forbidden (often means object doesn't exist)
+                                // 403 Forbidden means permission denied; propagate as error
                                 _ => Err(err),    // Other errors should propagate
                             };
                         }
