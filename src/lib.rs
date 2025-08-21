@@ -224,6 +224,8 @@ oneio::download(
 #### S3-related operations (needs `s3` feature flag)
 
 ```rust,no_run
+#[cfg(feature = "s3")]
+{
 use oneio::s3::*;
 
 // upload to S3
@@ -272,6 +274,7 @@ assert_eq!(
     s3_exists("oneio-test", "test/README___NON_EXISTS.md").unwrap()
 );
 assert_eq!(true, s3_exists("oneio-test", "test/README.md").unwrap());
+}
 ```
 
 # Built with ❤️ by BGPKIT Team
