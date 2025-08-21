@@ -17,7 +17,9 @@ use std::io::{BufWriter, Read, Write};
 /// # Returns
 /// * `Ok(Box<dyn Read + Send>)` - A reader that decompresses bzip2 data on the fly.
 /// * `Err(OneIoError)` - If the bzip2 decoder could not be created.
-pub(crate) fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError> {
+pub(crate) fn get_reader(
+    raw_reader: Box<dyn Read + Send>,
+) -> Result<Box<dyn Read + Send>, OneIoError> {
     Ok(Box::new(BzDecoder::new(raw_reader)))
 }
 

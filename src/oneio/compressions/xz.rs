@@ -16,7 +16,9 @@ use xz2::write::XzEncoder;
 /// # Returns
 /// * `Ok(Box<dyn Read + Send>)` - A reader that decompresses xz data on the fly.
 /// * `Err(OneIoError)` - If the xz decoder could not be created.
-pub(crate) fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError> {
+pub(crate) fn get_reader(
+    raw_reader: Box<dyn Read + Send>,
+) -> Result<Box<dyn Read + Send>, OneIoError> {
     Ok(Box::new(XzDecoder::new(raw_reader)))
 }
 

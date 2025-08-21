@@ -161,7 +161,11 @@ fn main() {
 
     if cli.download {
         let out_path = match outfile {
-            None => path.split('/').next_back().unwrap_or("output.txt").to_string(),
+            None => path
+                .split('/')
+                .next_back()
+                .unwrap_or("output.txt")
+                .to_string(),
             Some(p) => p.to_str().unwrap().to_string(),
         };
 

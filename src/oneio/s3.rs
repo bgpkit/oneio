@@ -401,7 +401,7 @@ pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
                             return match status_code {
                                 404 => Ok(false), // Not Found
                                 // 403 Forbidden means permission denied; propagate as error
-                                _ => Err(err),    // Other errors should propagate
+                                _ => Err(err), // Other errors should propagate
                             };
                         }
                     }

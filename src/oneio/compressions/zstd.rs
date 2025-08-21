@@ -14,7 +14,9 @@ use std::io::{BufWriter, Read, Write};
 /// # Returns
 /// * `Ok(Box<dyn Read + Send>)` - A reader that decompresses zstd data on the fly.
 /// * `Err(OneIoError)` - If the zstd decoder could not be created.
-pub(crate) fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError> {
+pub(crate) fn get_reader(
+    raw_reader: Box<dyn Read + Send>,
+) -> Result<Box<dyn Read + Send>, OneIoError> {
     match zstd::Decoder::new(raw_reader) {
         Ok(dec) => Ok(Box::new(dec)),
         Err(e) => Err(OneIoError::Io(e)),

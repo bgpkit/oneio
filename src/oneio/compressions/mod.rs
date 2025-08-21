@@ -20,7 +20,6 @@ pub(crate) mod xz;
 #[cfg(feature = "zstd")]
 pub(crate) mod zstd;
 
-
 /// Returns a compression reader for the given file suffix.
 ///
 /// This function selects the appropriate compression algorithm based on the provided

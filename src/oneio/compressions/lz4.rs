@@ -15,13 +15,18 @@ use std::io::{BufWriter, Read, Write};
 /// # Returns
 /// * `Ok(Box<dyn Read + Send>)` - A reader that decompresses lz4 data on the fly.
 /// * `Err(OneIoError)` - If the lz4 decoder could not be created.
-pub(crate) fn get_reader(raw_reader: Box<dyn Read + Send>) -> Result<Box<dyn Read + Send>, OneIoError> {
+pub(crate) fn get_reader(
+    raw_reader: Box<dyn Read + Send>,
+) -> Result<Box<dyn Read + Send>, OneIoError> {
     Decoder::new(raw_reader)
         .map(|decoder| Box::new(decoder) as Box<dyn Read + Send>)
         .map_err(|e| {
             // Preserve original error information in the message
             let error_msg = format!("LZ4 decoder initialization failed: {e}");
-            OneIoError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, error_msg))
+            OneIoError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                error_msg,
+            ))
         })
 }
 

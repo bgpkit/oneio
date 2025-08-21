@@ -109,7 +109,9 @@ mod tests {
             success: bool,
         }
 
-        let data = crate::read_json_struct::<Data>("https://spaces.bgpkit.org/oneio/test_data.json").unwrap();
+        let data =
+            crate::read_json_struct::<Data>("https://spaces.bgpkit.org/oneio/test_data.json")
+                .unwrap();
 
         assert_eq!(data.purpose, "test".to_string());
         assert_eq!(data.version, 1);
