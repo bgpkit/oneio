@@ -15,6 +15,9 @@ use std::fs::File;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 
+#[cfg(feature = "async")]
+use futures::StreamExt;
+
 /// Extracts the protocol from a given path.
 pub(crate) fn get_protocol(path: &str) -> Option<String> {
     let parts = path.split("://").collect::<Vec<&str>>();
@@ -507,15 +510,11 @@ async fn get_async_reader_raw(path: &str) -> Result<Box<dyn AsyncRead + Send + U
     let raw_reader: Box<dyn AsyncRead + Send + Unpin> = match get_protocol(path) {
         #[cfg(feature = "http")]
         Some(protocol) if protocol == "http" || protocol == "https" => {
-            // TODO: Implement true streaming instead of loading entire response into memory
-            // This would require:
-            // 1. Adding "stream" feature to reqwest in Cargo.toml
-            // 2. Adding tokio-util dependency
-            // 3. Using response.bytes_stream() with tokio_util::io::StreamReader
-            // Current implementation loads entire response for simplicity
             let response = reqwest::get(path).await?;
-            let bytes = response.bytes().await?;
-            Box::new(std::io::Cursor::new(bytes))
+            let stream = response.bytes_stream().map(|result| {
+                result.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            });
+            Box::new(tokio_util::io::StreamReader::new(stream))
         }
         #[cfg(feature = "ftp")]
         Some(protocol) if protocol == "ftp" => {
