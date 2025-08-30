@@ -2,6 +2,127 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased changes
+
+### Code improvements
+- **S3 error handling**: Replace fragile string matching with HTTP status code parsing in `s3_exists()` for more reliable object existence checks
+- **Progress tracking**: Improve content length error handling to distinguish between unknown size (expected) and failed size determination, with warning logs for debugging
+- **Examples**: Replace unreliable `httpbin.org` endpoint with stable `spaces.bgpkit.org` endpoint in progress tracking examples
+
+### Breaking Changes
+- **Progress tracking API**: Changed `get_reader_with_progress()` signature to return `Option<u64>` instead of `u64` for total size
+  - `Some(size)` indicates known file size
+  - `None` indicates unknown file size (e.g., streaming endpoints without Content-Length)
+  - Provides better semantic clarity about whether size information is available
+
+**Migration guide:**
+```rust
+// Before
+let (reader, total_size) = get_reader_with_progress(path, callback)?;
+if total_size > 0 {
+    println!("Size: {} bytes", total_size);
+} else {
+    println!("Size: unknown");
+}
+
+// After  
+let (reader, total_size) = get_reader_with_progress(path, callback)?;
+match total_size {
+    Some(size) => println!("Size: {} bytes", size),
+    None => println!("Size: unknown"),
+}
+```
+
+## v0.19.0 -- 2025-08-10
+
+### 🎉 Major Release: Feature Simplification & New Features
+
+This release represents a significant simplification of OneIO while adding powerful new features. The codebase has been thoroughly refactored to follow a "dead simple" philosophy with cleaner APIs and better user experience.
+
+### 🚨 BREAKING CHANGES
+
+#### Feature Flag Simplification
+- **Old hierarchy removed**: Removed complex nested feature structure (`lib-core`, `remote`, `compressions`)
+- **New flat structure**: Simple, intuitive features: `gz`, `bz`, `lz`, `xz`, `zstd`, `http`, `ftp`, `s3`, `async`
+- **New default features**: `["gz", "bz", "http"]` (was `["lib-core", "rustls"]`)
+
+**Migration guide:**
+```toml
+# Before (v0.18.x)
+oneio = { version = "0.18", features = ["lib-core", "rustls"] }
+
+# After (v0.19.0)  
+oneio = { version = "0.19", features = ["gz", "bz", "http"] }
+```
+
+#### Error System Consolidation
+- **Simplified from 10+ variants to 3**:
+  - `Io(std::io::Error)` - File system errors
+  - `Network(Box<dyn Error>)` - Network/remote errors  
+  - `NotSupported(String)` - Feature not compiled or unsupported operation
+
+#### Removed Components
+- **Removed build.rs** - No longer needed with simplified feature structure
+- **Removed OneIOCompression trait** - Replaced with direct function calls for better performance and simplicity
+
+### ✨ New Features
+
+#### Progress Tracking
+- **New function**: `get_reader_with_progress()` for tracking download/read progress
+- **Flexible sizing**: Works with both known and unknown file sizes (uses 0 when unknown)
+- **Raw byte tracking**: Tracks bytes read before decompression
+- **Callback-based**: `|bytes_read, total_bytes| { ... }` progress callbacks
+
+#### Async Support (Feature: `async`)
+- **New functions**: `get_reader_async()`, `read_to_string_async()`, `download_async()`
+- **Streaming async I/O**: True async support for HTTP and local files
+- **Compression support**: Works with gzip, bzip2, and zstd (async-compression)
+- **Clear limitations**: LZ4 and XZ return `NotSupported` errors (no native async support)
+- **No over-engineering**: FTP/S3 protocols return clear "not supported" errors instead of spawn_blocking workarounds
+
+### 🛠️ Improvements
+
+#### Code Quality & Safety
+- **Fixed unsafe operations**: Replaced all unsafe `unwrap()` calls in path parsing with safe alternatives
+- **Better error handling**: FTP login and file operations now properly handle errors
+- **Cleaner compression**: Direct function calls instead of trait-based dispatch
+
+#### Testing & Documentation
+- **Feature-conditional tests**: Tests now work with any feature combination, including no features
+- **Updated examples**: Progress tracking and async examples demonstrate real-world usage
+- **Improved documentation**: Clear migration guide and feature explanations
+
+### 🐛 Bug Fixes
+
+- **Fixed issue #48**: S3 upload now validates file existence early, preventing hanging on non-existent files
+- **Fixed doctest compilation**: Examples now use appropriate `ignore` flags for feature-dependent code
+- **Fixed progress tracking edge cases**: Now handles streaming endpoints and unknown file sizes gracefully
+
+### 🧹 Code Simplification
+
+This release significantly reduces code complexity:
+- **Removed trait-based compression system** in favor of direct function calls
+- **Eliminated nested feature dependencies** with flat, intuitive structure  
+- **Simplified async implementation** by removing over-engineered spawn_blocking patterns
+- **Streamlined error types** from 10+ variants to 3 essential categories
+
+### 📦 Dependencies
+
+- **Added**: `tokio`, `async-compression`, `futures` (async feature)
+- **Updated**: Feature flags are now flat and self-contained
+- **Maintained**: All existing compression and protocol dependencies
+
+---
+
+### 📝 Migration Notes
+
+1. **Update feature flags** to use the new flat structure
+2. **Handle new error types** (most code should work unchanged due to similar error kinds)
+3. **Consider new progress tracking** for better user experience
+4. **Explore async support** for non-blocking I/O operations
+
+For detailed examples, see the updated README and examples directory.
+
 ## v0.18.2 -- 2025-06-06
 
 ### Hot Fix

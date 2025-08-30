@@ -20,7 +20,7 @@ pub(crate) fn get_ftp_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, One
     let path = parts[3..].join("/");
 
     let mut ftp_stream = suppaftp::FtpStream::connect(socket)?;
-    ftp_stream.login("anonymous", "oneio").unwrap();
+    ftp_stream.login("anonymous", "oneio")?;
     ftp_stream.transfer_type(suppaftp::types::FileType::Binary)?;
     let reader = Box::new(ftp_stream.retr_as_stream(path.as_str())?);
     Ok(reader)
@@ -144,7 +144,7 @@ pub fn get_http_reader(
     use crate::oneio::compressions::get_compression_reader;
 
     let raw_reader: Box<dyn Read + Send> = Box::new(get_http_reader_raw(path, opt_client)?);
-    let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
+    let file_type = path.rsplit('.').next().unwrap_or("");
     get_compression_reader(raw_reader, file_type)
 }
 
