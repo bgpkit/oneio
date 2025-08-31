@@ -121,7 +121,7 @@ pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
 ///     }
 /// }
 /// ```
-pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
+pub fn s3_bucket(bucket: &str) -> Result<Box<Bucket>, OneIoError> {
     dotenvy::dotenv().ok();
     let mut bucket = Bucket::new(
         bucket,
@@ -506,7 +506,7 @@ mod tests {
             Ok(_) => {
                 panic!("Upload should have failed for non-existent file");
             }
-            Err(crate::OneIoError::Io(e)) => {
+            Err(OneIoError::Io(e)) => {
                 let duration = start.elapsed();
                 println!(
                     "✓ Upload failed quickly with IO error after {:?}: {}",

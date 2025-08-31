@@ -2,10 +2,11 @@ use std::io::Read;
 use std::thread::sleep;
 use std::time::Duration;
 
+const URL: &str = "https://josephine.sobornost.net/rpkidata/2023/08/04/rpki-20230804T000430Z.tgz";
 fn main() {
-    let reader = oneio::get_reader("http://josephine.sobornost.net/josephine.sobornost.net/rpkidata/2023/08/04/rpki-20230804T000430Z.tgz").unwrap();
+    let reader = oneio::get_reader(URL).unwrap();
     let mut ar = tar::Archive::new(reader);
-    println!("processing rpkiviews tar file at http://josephine.sobornost.net/josephine.sobornost.net/rpkidata/2023/08/04/rpki-20230804T000430Z.tgz");
+    println!("processing rpkiviews tar file at {URL}");
     println!("searching for any files in tar that ends with .csv");
     for entry in ar.entries().unwrap() {
         let mut entry = entry.unwrap();

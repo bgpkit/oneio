@@ -154,7 +154,7 @@ pub fn get_http_reader(
 ///
 /// * `remote_path` - The remote path of the file to download.
 /// * `local_path` - The local path where the downloaded file will be saved.
-/// * `opt_client` - Optional custom [reqwest::blocking::Client] to use for the request.
+/// * `opt_client` - Optional custom [Client] to use for the request.
 ///
 /// # Errors
 ///
@@ -219,7 +219,7 @@ pub fn download(
 ///
 /// * `remote_path` - The URL or file path of the file to download.
 /// * `local_path` - The file path to save the downloaded file.
-/// * `opt_client` - Optional custom [reqwest::blocking::Client] to use for the request.
+/// * `opt_client` - Optional custom [Client] to use for the request.
 /// * `retry` - The number of times to retry downloading in case of failure.
 ///
 /// # Errors
