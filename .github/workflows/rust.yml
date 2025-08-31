@@ -21,26 +21,20 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Build default
-        run: cargo build
+      - name: Run format check
+        run: cargo fmt --check
+
+      - name: Run clippy for all features
+        run: cargo clippy --all-features -- -D warnings
 
       - name: Build no-default
         run: cargo build --no-default-features
 
       - name: Build lib with native-tls
-        run: cargo build --no-default-features --features lib-core,native-tls && cargo tree --no-default-features --features lib-core,native-tls | grep -q rustls && {exit 1} || echo "success"
+        run: cargo build --no-default-features --features http,gz,bz,native-tls && cargo tree --no-default-features --features http,gz,bz,native-tls | grep -q rustls && {exit 1} || echo "success"
 
       - name: Build lib with rustls
-        run: cargo build --no-default-features --features lib-core,rustls && cargo tree --no-default-features --features lib-core,rustls | grep -q native-tls && {exit 1} || echo "success"
-
-      - name: Build lib with all features
-        run: cargo build --all-features
+        run: cargo build --no-default-features --features http,gz,bz,rustls && cargo tree --no-default-features --features http,gz,bz,rustls | grep -q native-tls && {exit 1} || echo "success"
 
       - name: Run test for lib + all optionals features
         run: cargo test --all-features
-
-      - name: Run clippy for all features
-        run: cargo clippy --all-features -- -D warnings
-
-      - name: Run format check
-        run: cargo fmt --check
