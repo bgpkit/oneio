@@ -10,7 +10,9 @@ const TEST_TEXT: &str = "OneIO test file.\nThis is a test.";
 
 #[tokio::test]
 async fn async_read_local_plain() {
-    let mut reader = oneio::get_reader_async("tests/test_data.txt").await.unwrap();
+    let mut reader = oneio::get_reader_async("tests/test_data.txt")
+        .await
+        .unwrap();
     let mut content = String::new();
     reader.read_to_string(&mut content).await.unwrap();
     assert_eq!(content, TEST_TEXT);
@@ -19,7 +21,9 @@ async fn async_read_local_plain() {
 #[cfg(feature = "gz")]
 #[tokio::test]
 async fn async_read_local_gzip() {
-    let mut reader = oneio::get_reader_async("tests/test_data.txt.gz").await.unwrap();
+    let mut reader = oneio::get_reader_async("tests/test_data.txt.gz")
+        .await
+        .unwrap();
     let mut content = String::new();
     reader.read_to_string(&mut content).await.unwrap();
     assert_eq!(content, TEST_TEXT);

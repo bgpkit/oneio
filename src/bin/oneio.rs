@@ -14,7 +14,7 @@ struct Cli {
     #[clap(name = "FILE")]
     file: Option<PathBuf>,
 
-    /// download the file to current directory, similar to run `wget`
+    /// download the file to the current directory, similar to run `wget`
     #[clap(short, long)]
     download: bool,
 
@@ -22,11 +22,11 @@ struct Cli {
     #[clap(short, long)]
     outfile: Option<PathBuf>,
 
-    /// cache reading to specified directory
+    /// cache reading to a specified directory
     #[clap(long)]
     cache_dir: Option<String>,
 
-    /// force re-caching if local cache already exists
+    /// force re-caching if a local cache already exists
     #[clap(long)]
     cache_force: bool,
 
