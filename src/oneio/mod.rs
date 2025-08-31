@@ -511,9 +511,9 @@ async fn get_async_reader_raw(path: &str) -> Result<Box<dyn AsyncRead + Send + U
         #[cfg(feature = "http")]
         Some(protocol) if protocol == "http" || protocol == "https" => {
             let response = reqwest::get(path).await?;
-            let stream = response.bytes_stream().map(|result| {
-                result.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-            });
+            let stream = response
+                .bytes_stream()
+                .map(|result| result.map_err(std::io::Error::other));
             Box::new(tokio_util::io::StreamReader::new(stream))
         }
         #[cfg(feature = "ftp")]
