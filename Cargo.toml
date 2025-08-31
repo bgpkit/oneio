@@ -83,7 +83,7 @@ json = ["serde", "serde_json"]
 digest = ["ring", "hex"]
 
 # CLI tool (includes common features)
-cli = ["clap", "tracing", "gz", "bz", "http", "s3", "digest"]
+cli = ["clap", "tracing", "gz", "bz", "lz", "xz", "http", "s3", "digest"]
 
 # Advanced: TLS selection (only if explicitly needed)
 native-tls = [
