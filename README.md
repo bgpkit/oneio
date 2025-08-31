@@ -5,112 +5,67 @@
 [![Docs.rs](https://docs.rs/oneio/badge.svg)](https://docs.rs/oneio)
 [![License](https://img.shields.io/crates/l/oneio)](https://raw.githubusercontent.com/bgpkit/oneio/main/LICENSE)
 
-OneIO is a Rust library that provides a unified IO interface for reading and writing
-data files from different sources and compressions, with support for both synchronous
-and asynchronous operations.
+OneIO is a Rust library providing unified IO operations for reading and writing compressed
+files from local and remote sources with both synchronous and asynchronous support.
 
-### Usage and Feature Flags
-
-Enable default features (gzip, bzip2, HTTP support):
+### Quick Start
 
 ```toml
-oneio = "0.19"
+oneio = "0.19"  # Default: gz, bz, http
 ```
 
-Select from supported feature flags:
+### Feature Selection Guide
 
+#### Common Use Cases
+
+**Local files only:**
 ```toml
-oneio = { version = "0.19", default-features = false, features = ["gz", "http", "async"] }
+oneio = { version = "0.19", default-features = false, features = ["gz", "bz"] }
 ```
 
-### Feature Flags
-
-OneIO v0.19 uses a simplified, flat feature structure:
-
-#### Default Features
-- `gz`: Support gzip compression using `flate2` crate
-- `bz`: Support bzip2 compression using `bzip2` crate
-- `http`: Support HTTP(S) remote files using `reqwest` crate
-
-#### Optional Compression Features
-- `lz`: Support LZ4 compression using `lz4` crate
-- `xz`: Support XZ compression using `xz2` crate (requires xz library)
-- `zstd`: Support Zstandard compression using `zstd` crate
-
-#### Optional Protocol Features
-- `ftp`: Support FTP remote files using `suppaftp` crate (requires `http`)
-- `s3`: Support AWS S3 compatible buckets using `rust-s3` crate
-
-#### Other Features
-- `json`: Enable JSON parsing with `serde` and `serde_json`
-- `digest`: Enable SHA256 digest generation using `ring` crate
-- `async`: Enable async support with `tokio` and `async-compression`
-- `cli`: Build the `oneio` command-line tool
-
-#### TLS Configuration (Advanced)
-- `rustls`: Use rustls for TLS (default when TLS is needed)
-- `native-tls`: Use native TLS instead of rustls
-
-Set `ONEIO_ACCEPT_INVALID_CERTS=true` to accept invalid certificates (not recommended).
-
-### New in v0.19
-
-#### Progress Tracking
-Track download/read progress with callbacks, works with both known and unknown file sizes.
-Progress tracking now provides better error handling and distinguishes between unknown size
-(streaming endpoints) and failed size determination:
-
-```rust
-use oneio;
-
-let (mut reader, total_size) = oneio::get_reader_with_progress(
-    "https://example.com/largefile.gz",
-    |bytes_read, total_bytes| {
-        if total_bytes > 0 {
-            let percent = (bytes_read as f64 / total_bytes as f64) * 100.0;
-            println!("Progress: {:.1}% ({}/{})", percent, bytes_read, total_bytes);
-        } else {
-            println!("Downloaded: {} bytes (size unknown)", bytes_read);
-        }
-    }
-)?;
-
-// total_size is None when file size cannot be determined
-match total_size {
-    Some(size) => println!("File size: {} bytes", size),
-    None => println!("File size: unknown (streaming)"),
-}
-
-let content = std::io::read_to_string(&mut reader)?;
+**HTTP/HTTPS with compression**:
+```toml
+oneio = { version = "0.19", default-features = false, features = ["http", "gz", "zstd"] }
 ```
 
-#### Async Support (Feature: `async`)
-Asynchronous file operations with automatic compression:
+**S3-compatible storage (AWS S3, R2, MinIO)**:
+```toml
+oneio = { version = "0.19", default-features = false, features = ["s3", "http", "gz"] }
+```
+Note: S3 requires the `http` feature.
 
-```rust
-use oneio;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Async reading with automatic decompression
-    let content = oneio::read_to_string_async("https://example.com/data.json.gz").await?;
-    println!("Content: {}", content);
-
-    // Async download
-    oneio::download_async(
-        "https://example.com/data.csv.gz",
-        "local_data.csv.gz"
-    ).await?;
-
-    Ok(())
-}
+**Async operations**:
+```toml
+oneio = { version = "0.19", features = ["async"] }
 ```
 
-**Note**: Async compression support varies by format:
-- ✅ Supported: gzip, bzip2, zstd
-- ❌ Not supported: LZ4, XZ (returns `NotSupported` error)
+#### Available Features
 
-### Basic Usage
+**Compression** (choose only what you need):
+- `gz` - Gzip via flate2
+- `bz` - Bzip2
+- `lz` - LZ4
+- `xz` - XZ
+- `zstd` - Zstandard (balanced)
+
+**Protocols**:
+- `http` - HTTP/HTTPS support
+- `ftp` - FTP support (requires `http`)
+- `s3` - S3-compatible storage
+
+**Additional**:
+- `async` - Async support (limited to gz, bz, zstd for compression)
+- `json` - JSON parsing
+- `digest` - SHA256 digest calculation
+- `cli` - Command-line tool
+
+**TLS Backend** (mutually exclusive):
+- `rustls` - Pure Rust TLS (default)
+- `native-tls` - Platform native TLS
+
+Environment: Set `ONEIO_ACCEPT_INVALID_CERTS=true` to accept invalid certificates.
+
+### Usages
 
 #### Reading Files
 
@@ -183,10 +138,52 @@ let content = std::io::read_to_string(&mut reader)?;
 println!("{}", content);
 ```
 
+#### Progress Tracking
+Track download/read progress with callbacks:
+
+```rust
+use oneio;
+
+let (mut reader, total_size) = oneio::get_reader_with_progress(
+    "https://example.com/largefile.gz",
+    |bytes_read, total_bytes| {
+        match total_bytes {
+            Some(total) => {
+                let percent = (bytes_read as f64 / total as f64) * 100.0;
+                println!("Progress: {:.1}%", percent);
+            }
+            None => println!("Downloaded: {} bytes", bytes_read),
+        }
+    }
+)?;
+```
+
+#### Async Support (Feature: `async`)
+
+```rust
+use oneio;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let content = oneio::read_to_string_async("https://example.com/data.json.gz").await?;
+
+    oneio::download_async(
+        "https://example.com/data.csv.gz",
+        "local_data.csv.gz"
+    ).await?;
+
+    Ok(())
+}
+```
+
+Note: Async compression is limited to gz, bz, zstd. LZ4/XZ return `NotSupported`.
+
+
 ### Supported Formats
 
 #### Compression Detection
-Compression is detected automatically by file extension:
+
+OneIO detects compression algorithm by the file extensions:
 
 - **Gzip**: `.gz`, `.gzip`
 - **Bzip2**: `.bz`, `.bz2`
@@ -226,49 +223,37 @@ oneio https://api.example.com/data.json.gz | jq '.results | length'
 ```rust
 use oneio::s3::*;
 
-// Upload local file to S3
+// Direct S3 operations
 s3_upload("my-bucket", "path/to/file.txt", "local/file.txt")?;
-
-// Read directly from S3
-let content = oneio::read_to_string("s3://my-bucket/path/to/file.txt")?;
-
-// Download from S3
 s3_download("my-bucket", "path/to/file.txt", "downloaded.txt")?;
 
-// Check if S3 object exists (improved error handling)
-if s3_exists("my-bucket", "path/to/file.txt")? {
-    println!("File exists!");
-}
+// Read S3 directly
+let content = oneio::read_to_string("s3://my-bucket/path/to/file.txt")?;
 
-// Get object metadata
-let stats = s3_stats("my-bucket", "path/to/file.txt")?;
-println!("Size: {} bytes", stats.content_length.unwrap_or(0));
+// Check existence and get metadata
+if s3_exists("my-bucket", "path/to/file.txt")? {
+    let stats = s3_stats("my-bucket", "path/to/file.txt")?;
+    println!("Size: {} bytes", stats.content_length.unwrap_or(0));
+}
 
 // List objects
 let objects = s3_list("my-bucket", "path/", Some("/".to_string()), false)?;
-for obj in objects {
-    println!("Found: {}", obj);
-}
 ```
 
 ### Error Handling
 
-OneIO v0.19 uses a simplified error system with three main types:
+Three error types in v0.19:
 
 ```rust
 use oneio::OneIoError;
 
-match oneio::get_reader("nonexistent.txt") {
+match oneio::get_reader("file.txt") {
     Ok(reader) => { /* use reader */ },
-    Err(OneIoError::Io(e)) => println!("IO error: {}", e),
-    Err(OneIoError::Network(e)) => println!("Network error: {}", e),
-    Err(OneIoError::NotSupported(msg)) => println!("Not supported: {}", msg),
+    Err(OneIoError::Io(e)) => { /* filesystem error */ },
+    Err(OneIoError::Network(e)) => { /* network error */ },
+    Err(OneIoError::NotSupported(msg)) => { /* feature not compiled */ },
 }
 ```
-
-## Built with ❤️ by BGPKIT Team
-
-<a href="https://bgpkit.com"><img src="https://bgpkit.com/Original%20Logo%20Cropped.png" alt="https://bgpkit.com/favicon.ico" width="200"/></a>
 
 ## License
 
