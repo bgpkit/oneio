@@ -64,14 +64,15 @@ tokio-util = { version = "0.7", optional = true }
 
 [features]
 # Simple, flat feature structure
-default = ["gz", "bz", "http"]
+default = ["gz", "bz", "https"]
 
 # Backward compatible `lib-core` feature, no longer default.
 lib-core = ["http", "ftp", "gz", "bz", "lz", "xz", "zstd", "json"]
 
 # Transport features (TLS handled automatically by libraries)
-http = ["reqwest/default"]
-ftp = ["http", "suppaftp"] # ftp needs http
+http = ["reqwest"]
+https = ["http", "rustls"] # https needs http
+ftp = ["https", "suppaftp"] # ftp needs https
 s3 = ["rust-s3"]
 
 # Compression features (independent)
@@ -100,7 +101,7 @@ rustls = [
     "rust-s3?/sync-rustls-tls"
 ]
 
-# Future: Async support (to be implemented in Phase 3)
+# Future: Async support
 async = ["tokio", "tokio-util", "async-compression", "futures"]
 
 [dev-dependencies]
