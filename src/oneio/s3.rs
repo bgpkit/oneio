@@ -85,7 +85,7 @@ pub fn s3_env_check() -> Result<(), OneIoError> {
 pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
     let parts = path.split('/').collect::<Vec<&str>>();
     if parts.len() < 3 {
-        return Err(OneIoError::S3UrlError(path.to_string()));
+        return Err(OneIoError::NotSupported(format!("Invalid S3 URL: {path}")));
     }
     let bucket = parts[2];
     let key = parts[3..].join("/");
@@ -123,7 +123,7 @@ pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
 /// ```
 pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
     dotenvy::dotenv().ok();
-    let mut bucket = Bucket::new(
+    let mut bucket = *Bucket::new(
         bucket,
         Region::from_default_env()?,
         Credentials::new(None, None, None, None, None)?,
@@ -194,6 +194,15 @@ pub fn s3_reader(bucket: &str, path: &str) -> Result<Box<dyn Read + Send>, OneIo
 /// assert!(result.is_ok());
 /// ```
 pub fn s3_upload(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), OneIoError> {
+    // Early validation: check if file exists before attempting S3 operations
+    // This prevents potential hanging issues when file doesn't exist
+    if !std::path::Path::new(file_path).exists() {
+        return Err(OneIoError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("File not found: {file_path}"),
+        )));
+    }
+
     let bucket = s3_bucket(bucket)?;
     let mut reader = get_reader_raw(file_path)?;
     bucket.put_object_stream(&mut reader, s3_path)?;
@@ -278,7 +287,7 @@ pub fn s3_delete(bucket: &str, s3_path: &str) -> Result<(), OneIoError> {
 ///
 /// # Errors
 ///
-/// The function can return `OneIoError::S3DownloadError` if the HTTP response
+/// The function can return `OneIoError::Network` if the HTTP response
 /// status code is not in the range of 200 to 299 (inclusive).
 ///
 /// # Example
@@ -303,7 +312,9 @@ pub fn s3_download(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), O
     let res: u16 = bucket.get_object_to_writer(s3_path, &mut output_file)?;
     match res {
         200..=299 => Ok(()),
-        _ => Err(OneIoError::S3DownloadError(res)),
+        _ => Err(OneIoError::Network(Box::new(std::io::Error::other(
+            format!("S3 HTTP error: {res}"),
+        )))),
     }
 }
 
@@ -345,7 +356,9 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
     let (head_object, code): (HeadObjectResult, u16) = bucket.head_object(path)?;
     match code {
         200..=299 => Ok(head_object),
-        _ => Err(OneIoError::S3DownloadError(code)),
+        _ => Err(OneIoError::Network(Box::new(std::io::Error::other(
+            format!("S3 HTTP error: {code}"),
+        )))),
     }
 }
 
@@ -359,7 +372,7 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
 /// # Returns
 ///
 /// Returns `Ok(true)` if the file exists, `Ok(false)` if the file does not exist,
-/// or an `Err` containing a `OneIoError::S3DownloadError` if there was an error
+/// or an `Err` containing a `OneIoError::Network` if there was an error
 /// checking the file's existence.
 ///
 /// # Example
@@ -375,14 +388,27 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
 /// }
 /// ```
 pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
-    if let Err(OneIoError::S3DownloadError(code)) = s3_stats(bucket, path) {
-        if code == 404 {
-            Ok(false)
-        } else {
-            Err(OneIoError::S3DownloadError(code))
+    match s3_stats(bucket, path) {
+        Ok(_) => Ok(true),
+        Err(err) => {
+            // Check if this is a 404 network error by parsing the status code
+            if let OneIoError::Network(boxed_err) = &err {
+                let error_msg = boxed_err.to_string();
+                if error_msg.starts_with("S3 HTTP error: ") {
+                    // Parse the status code from the structured error message
+                    if let Some(code_str) = error_msg.strip_prefix("S3 HTTP error: ") {
+                        if let Ok(status_code) = code_str.parse::<u16>() {
+                            return match status_code {
+                                404 => Ok(false), // Not Found
+                                // 403 Forbidden means permission denied; propagate as error
+                                _ => Err(err), // Other errors should propagate
+                            };
+                        }
+                    }
+                }
+            }
+            Err(err)
         }
-    } else {
-        Ok(true)
     }
 }
 
@@ -460,5 +486,50 @@ mod tests {
 
         const NON_S3_URL: &str = "s3:/test-bucket";
         assert!(s3_url_parse(NON_S3_URL).is_err());
+    }
+
+    #[test]
+    fn test_s3_upload_nonexistent_file_early_validation() {
+        // Test for issue #48: s3_upload should fail quickly for non-existent files
+        // This test checks the early validation logic without requiring S3 credentials
+
+        let non_existent_file = "/tmp/oneio_test_nonexistent_file_12345.txt";
+
+        // Make sure the file doesn't exist
+        let _ = std::fs::remove_file(non_existent_file);
+        assert!(!std::path::Path::new(non_existent_file).exists());
+
+        // This should return an error quickly due to early file validation
+        let start = std::time::Instant::now();
+
+        match s3_upload("test-bucket", "test-path", non_existent_file) {
+            Ok(_) => {
+                panic!("Upload should have failed for non-existent file");
+            }
+            Err(OneIoError::Io(e)) => {
+                let duration = start.elapsed();
+                println!(
+                    "✓ Upload failed quickly with IO error after {:?}: {}",
+                    duration, e
+                );
+                assert!(
+                    duration < std::time::Duration::from_millis(100),
+                    "Early validation should be instant. Took: {:?}",
+                    duration
+                );
+                assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
+                assert!(e.to_string().contains("File not found"));
+            }
+            Err(e) => {
+                // Could also fail due to missing credentials, which is also quick
+                let duration = start.elapsed();
+                println!("Upload failed with error after {:?}: {:?}", duration, e);
+                assert!(
+                    duration < std::time::Duration::from_secs(1),
+                    "Should fail quickly, not hang. Took: {:?}",
+                    duration
+                );
+            }
+        }
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.18.2"
+version = "0.19.0"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -23,15 +23,11 @@ required-features = ["cli"]
 
 # required dependency
 dotenvy = "0.15"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # feature: remote
-reqwest = { version = "0.12", default-features = false, features = [
-    "blocking",
-    "http2",
-    "charset",
-], optional = true }
-suppaftp = { version = "6.0", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "http2", "charset", "stream"], optional = true }
+suppaftp = { version = "7.0", optional = true }
 
 # feature: compressions
 flate2 = { version = "1", optional = true }
@@ -49,7 +45,7 @@ serde = { version = "1.0", optional = true }
 serde_json = { version = "1.0", optional = true }
 
 # feature: s3
-rust-s3 = { version = "0.34.0-rc4", optional = true, default-features = false, features = [
+rust-s3 = { version = "0.35", optional = true, default-features = false, features = [
     "sync",
 ] }
 
@@ -57,36 +53,45 @@ rust-s3 = { version = "0.34.0-rc4", optional = true, default-features = false, f
 clap = { version = "4.4", features = ["derive"], optional = true }
 tracing = { version = "0.1", optional = true }
 
+# feature: async (Phase 3)
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "io-util", "fs"], optional = true }
+async-compression = { version = "0.4", features = ["tokio", "gzip", "bzip2", "zstd"], optional = true }
+futures = { version = "0.3", optional = true }
+
 rustls_sys = { package = "rustls", version = "0.23", optional = true }
+tokio-util = { version = "0.7", optional = true }
 
 
 [features]
-# default features include the library core and use rustls by default
-default = ["lib-core", "rustls"]
+# Simple, flat feature structure
+default = ["gz", "bz", "https"]
 
-# library core dependency to enable reading from local/remote with compressions enabled
-lib-core = ["remote", "compressions", "json"]
+# Backward compatible `lib-core` feature, no longer default.
+lib-core = ["http", "ftp", "gz", "bz", "lz", "xz", "zstd", "json"]
 
-# remote IO features
-remote = ["http", "ftp"]
+# Transport features (TLS handled automatically by libraries)
 http = ["reqwest"]
-ftp = ["http", "suppaftp"] # ftp also requires http feature on purpose
+https = ["http", "rustls"] # https needs http
+ftp = ["https", "suppaftp"] # ftp needs https
+s3 = ["rust-s3"]
 
-# cli dependencies
-cli = [
-    # core dependency
-    "lib-core",
-    "rustls",
-    "s3",
-    "digest",
-    # CLI specific
-    "clap",
-    "tracing",
-]
+# Compression features (independent)
+gz = ["flate2"]
+bz = ["bzip2"]
+lz = ["lz4"]
+xz = ["xz2"]
+zstd = ["dep:zstd"]
 
-# optional flags to select native-tls or rust-tls
+# Other features
+json = ["serde", "serde_json"]
+digest = ["ring", "hex"]
+
+# CLI tool (includes common features)
+cli = ["clap", "tracing", "gz", "bz", "lz", "xz", "http", "s3", "digest"]
+
+# Advanced: TLS selection (only if explicitly needed)
 native-tls = [
-    "reqwest?/default-tls",
+    "reqwest?/native-tls",
     "suppaftp?/native-tls",
     "rust-s3?/sync-native-tls",
 ]
@@ -96,26 +101,16 @@ rustls = [
     "rust-s3?/sync-rustls-tls"
 ]
 
-digest = ["ring", "hex"]
-
-# supported compression algorithms, which can be toggled on/off individually
-compressions = ["gz", "bz", "lz", "xz", "zstd"]
-gz = ["flate2"]
-bz = ["bzip2"]
-lz = ["lz4"]
-xz = ["xz2"]
-zstd = ["dep:zstd"]
-
-json = ["serde", "serde_json"]
-
-# s3 support, off by default
-s3 = ["rust-s3"]
+# Future: Async support
+async = ["tokio", "tokio-util", "async-compression", "futures"]
 
 [dev-dependencies]
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 tar = "0.4"
+tokio = { version = "1.0", features = ["macros", "rt"] }
+indicatif = "0.18"
 
 # This list only includes examples which require additional features to run. These are more in the examples' directory.
 [[example]]

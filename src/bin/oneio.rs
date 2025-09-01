@@ -14,7 +14,7 @@ struct Cli {
     #[clap(name = "FILE")]
     file: Option<PathBuf>,
 
-    /// download the file to current directory, similar to run `wget`
+    /// download the file to the current directory, similar to run `wget`
     #[clap(short, long)]
     download: bool,
 
@@ -22,11 +22,11 @@ struct Cli {
     #[clap(short, long)]
     outfile: Option<PathBuf>,
 
-    /// cache reading to specified directory
+    /// cache reading to a specified directory
     #[clap(long)]
     cache_dir: Option<String>,
 
-    /// force re-caching if local cache already exists
+    /// force re-caching if a local cache already exists
     #[clap(long)]
     cache_force: bool,
 
@@ -103,7 +103,7 @@ fn main() {
                 } => {
                     if let Err(e) = oneio::s3_env_check() {
                         eprintln!("missing s3 credentials");
-                        eprintln!("{}", e);
+                        eprintln!("{e}");
                         exit(1);
                     }
                     let path_string = cli.file.clone().unwrap().to_str().unwrap().to_string();
@@ -113,13 +113,10 @@ fn main() {
                         path_string.as_str(),
                     ) {
                         Ok(_) => {
-                            println!(
-                                "file successfully uploaded to s3://{}/{}",
-                                s3_bucket, s3_path
-                            );
+                            println!("file successfully uploaded to s3://{s3_bucket}/{s3_path}");
                         }
                         Err(e) => {
-                            eprintln!("file upload error: {}", e);
+                            eprintln!("file upload error: {e}");
                         }
                     }
                     return;
@@ -132,7 +129,7 @@ fn main() {
                 } => {
                     if let Err(e) = oneio::s3_env_check() {
                         eprintln!("missing s3 credentials");
-                        eprintln!("{}", e);
+                        eprintln!("{e}");
                         exit(1);
                     }
                     match oneio::s3_list(bucket.as_str(), prefix.as_str(), delimiter, dirs) {
@@ -141,7 +138,7 @@ fn main() {
                         }
                         Err(e) => {
                             eprintln!("unable to list bucket content");
-                            eprintln!("{}", e);
+                            eprintln!("{e}");
                             exit(1);
                         }
                     }
@@ -164,7 +161,11 @@ fn main() {
 
     if cli.download {
         let out_path = match outfile {
-            None => path.split('/').next_back().unwrap().to_string(),
+            None => path
+                .split('/')
+                .next_back()
+                .unwrap_or("output.txt")
+                .to_string(),
             Some(p) => p.to_str().unwrap().to_string(),
         };
 
@@ -173,7 +174,7 @@ fn main() {
                 println!("file successfully downloaded to {}", out_path.as_str());
             }
             Err(e) => {
-                eprintln!("file download error: {}", e);
+                eprintln!("file download error: {e}");
             }
         }
 
@@ -185,7 +186,7 @@ fn main() {
             match oneio::get_cache_reader(path, dir.as_str(), cli.cache_file, cli.cache_force) {
                 Ok(reader) => reader,
                 Err(e) => {
-                    eprintln!("Cannot open {}: {}", path, e);
+                    eprintln!("Cannot open {path}: {e}");
                     return;
                 }
             }
@@ -193,7 +194,7 @@ fn main() {
         None => match oneio::get_reader(path) {
             Ok(reader) => reader,
             Err(e) => {
-                eprintln!("Cannot open {}: {}", path, e);
+                eprintln!("Cannot open {path}: {e}");
                 return;
             }
         },
@@ -208,14 +209,14 @@ fn main() {
         let line = match line {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("Cannot read line from {}: {}", path, e);
+                eprintln!("Cannot read line from {path}: {e}");
                 exit(1);
             }
         };
         if !cli.stats {
-            if let Err(e) = writeln!(stdout, "{}", line) {
+            if let Err(e) = writeln!(stdout, "{line}") {
                 if e.kind() != std::io::ErrorKind::BrokenPipe {
-                    eprintln!("{}", e);
+                    eprintln!("{e}");
                     exit(1);
                 }
                 exit(0);
@@ -226,7 +227,7 @@ fn main() {
     }
 
     if cli.stats {
-        println!("lines: \t {}", count_lines);
-        println!("chars: \t {}", count_chars);
+        println!("lines: \t {count_lines}");
+        println!("chars: \t {count_chars}");
     }
 }

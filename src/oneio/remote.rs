@@ -20,7 +20,8 @@ pub(crate) fn get_ftp_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, One
     let path = parts[3..].join("/");
 
     let mut ftp_stream = suppaftp::FtpStream::connect(socket)?;
-    ftp_stream.login("anonymous", "oneio").unwrap();
+    // use anonymous login
+    ftp_stream.login("anonymous", "oneio")?;
     ftp_stream.transfer_type(suppaftp::types::FileType::Binary)?;
     let reader = Box::new(ftp_stream.retr_as_stream(path.as_str())?);
     Ok(reader)
@@ -32,13 +33,6 @@ pub(crate) fn get_http_reader_raw(
     opt_client: Option<Client>,
 ) -> Result<reqwest::blocking::Response, OneIoError> {
     dotenvy::dotenv().ok();
-    let accept_invalid_certs = matches!(
-        std::env::var("ONEIO_ACCEPT_INVALID_CERTS")
-            .unwrap_or_default()
-            .to_lowercase()
-            .as_str(),
-        "true" | "yes" | "y" | "1"
-    );
 
     #[cfg(feature = "rustls_sys")]
     rustls_sys::crypto::aws_lc_rs::default_provider()
@@ -62,10 +56,26 @@ pub(crate) fn get_http_reader_raw(
                 reqwest::header::CACHE_CONTROL,
                 reqwest::header::HeaderValue::from_static("no-cache"),
             );
-            Client::builder()
-                .default_headers(headers)
-                .danger_accept_invalid_certs(accept_invalid_certs)
-                .build()?
+
+            #[cfg(any(feature = "rustls", feature = "native-tls"))]
+            {
+                let accept_invalid_certs = matches!(
+                    std::env::var("ONEIO_ACCEPT_INVALID_CERTS")
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .as_str(),
+                    "true" | "yes" | "y" | "1"
+                );
+                Client::builder()
+                    .default_headers(headers)
+                    .danger_accept_invalid_certs(accept_invalid_certs)
+                    .build()?
+            }
+
+            #[cfg(not(any(feature = "rustls", feature = "native-tls")))]
+            {
+                Client::builder().default_headers(headers).build()?
+            }
         }
     };
     let res = client
@@ -144,7 +154,7 @@ pub fn get_http_reader(
     use crate::oneio::compressions::get_compression_reader;
 
     let raw_reader: Box<dyn Read + Send> = Box::new(get_http_reader_raw(path, opt_client)?);
-    let file_type = *path.split('.').collect::<Vec<&str>>().last().unwrap();
+    let file_type = path.rsplit('.').next().unwrap_or("");
     get_compression_reader(raw_reader, file_type)
 }
 
@@ -154,7 +164,7 @@ pub fn get_http_reader(
 ///
 /// * `remote_path` - The remote path of the file to download.
 /// * `local_path` - The local path where the downloaded file will be saved.
-/// * `opt_client` - Optional custom [reqwest::blocking::Client] to use for the request.
+/// * `opt_client` - Optional custom [Client] to use for the request.
 ///
 /// # Errors
 ///
@@ -219,7 +229,7 @@ pub fn download(
 ///
 /// * `remote_path` - The URL or file path of the file to download.
 /// * `local_path` - The file path to save the downloaded file.
-/// * `opt_client` - Optional custom [reqwest::blocking::Client] to use for the request.
+/// * `opt_client` - Optional custom [Client] to use for the request.
 /// * `retry` - The number of times to retry downloading in case of failure.
 ///
 /// # Errors

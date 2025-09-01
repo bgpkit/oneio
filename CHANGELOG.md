@@ -2,6 +2,113 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.19.0 -- 2025-08-31
+
+### Breaking Changes
+
+#### Feature Flag Simplification
+
+- Removed complex nested feature structure (`lib-core`, `remote`, `compressions`)
+- Introduced flat structure: `gz`, `bz`, `lz`, `xz`, `zstd`, `http`, `ftp`, `s3`, `async`
+- Changed default features from `["lib-core", "rustls"]` to `["gz", "bz", "http"]`
+
+**Migration guide:**
+
+```toml
+# Before (v0.18.x)
+oneio = { version = "0.18", features = ["lib-core", "rustls"] }
+
+# After (v0.19.0)  
+oneio = { version = "0.19", features = ["gz", "bz", "http"] }
+```
+
+#### Error System Consolidation
+
+- Simplified from 10+ error variants to 3 essential categories:
+    - `Io(std::io::Error)` - File system errors
+    - `Network(Box<dyn Error>)` - Network/remote errors
+    - `NotSupported(String)` - Feature is not compiled or unsupported operation
+
+#### Removed Components
+
+- Removed `build.rs` - No longer needed with simplified feature structure
+- Removed `OneIOCompression` trait - Replaced with direct function calls
+
+### New Features
+
+#### Progress Tracking
+
+- Added `get_reader_with_progress()` for tracking download/read progress
+- Works with both known and unknown file sizes
+- Tracks raw bytes read before decompression
+- Callback-based API: `|bytes_read, total_bytes| { ... }`
+
+#### Async Support (Feature: `async`)
+
+- Added `get_reader_async()`, `read_to_string_async()`, `download_async()`
+- True async support for HTTP and local files
+- Compression support for gzip, bzip2, and zstd via async-compression
+- LZ4 and XZ return `NotSupported` errors (no native async support)
+- FTP/S3 protocols return clear "not supported" errors
+
+#### CLI Enhancements
+
+- Added LZ/XZ compression support to CLI tool
+- Fixed typos in CLI option descriptions
+
+### Improvements
+
+#### Code Quality
+
+- Replaced unsafe `unwrap()` calls in path parsing with safe alternatives
+- Improved FTP login and file operation error handling
+- Simplified HTTP stream error mapping
+- Enhanced LZ4 error handling with better context
+- Removed `eprintln` from library code in progress tracking
+
+#### S3 Improvements
+
+- Replaced fragile string matching with HTTP status code parsing in `s3_exists()`
+- Fixed S3 upload hanging on non-existent files (issue #48)
+- Made S3 documentation tests conditional on s3 feature
+
+#### Testing and Examples
+
+- Tests now work with any feature combination, including no features
+- Updated progress tracking example to use indicatif
+- Replaced unreliable `httpbin.org` endpoint with stable `spaces.bgpkit.org` endpoint
+- Fixed doctest compilation with appropriate `ignore` flags
+
+#### Documentation
+
+- Updated lib.rs documentation for v0.19 changes
+- Clarified `http` vs `https` feature distinctions:
+  - `http` - HTTP-only support (no TLS)
+  - `https` - HTTP/HTTPS with rustls (equivalent to `http` + `rustls`)
+  - Custom TLS: Use `http` + `rustls` or `http` + `native-tls`
+- Regenerated README from lib.rs documentation
+- Added clear migration guide and feature explanations
+
+### Dependencies
+
+#### Updated
+
+- Upgraded bzip2 to 0.6.0
+- Added indicatif to dev-dependencies
+
+#### Added (for async feature)
+
+- tokio
+- async-compression
+- futures
+
+### Code Simplification
+
+- Removed trait-based compression system in favor of direct function calls
+- Eliminated nested feature dependencies with a flat structure
+- Simplified async implementation without spawn_blocking patterns
+- Streamlined error types from 10+ variants to 3 categories
+
 ## v0.18.2 -- 2025-06-06
 
 ### Hot Fix
@@ -214,7 +321,7 @@ This includes changes of:
 
 ### Highlights
 
-* GitHub actions uses vendored openssl instead of system openssl.
+* GitHub actions use vendored openssl instead of system openssl.
 
 ## v0.15.7 - 2023-12-16
 

@@ -16,3 +16,7 @@ Cargo.lock
 test
 /examples/debug.rs
 local
+
+# Temporary development planning files
+PLAN.md
+CLAUDE.md
