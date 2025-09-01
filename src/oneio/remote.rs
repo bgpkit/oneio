@@ -32,13 +32,6 @@ pub(crate) fn get_http_reader_raw(
     opt_client: Option<Client>,
 ) -> Result<reqwest::blocking::Response, OneIoError> {
     dotenvy::dotenv().ok();
-    let accept_invalid_certs = matches!(
-        std::env::var("ONEIO_ACCEPT_INVALID_CERTS")
-            .unwrap_or_default()
-            .to_lowercase()
-            .as_str(),
-        "true" | "yes" | "y" | "1"
-    );
 
     #[cfg(feature = "rustls_sys")]
     rustls_sys::crypto::aws_lc_rs::default_provider()
@@ -62,10 +55,26 @@ pub(crate) fn get_http_reader_raw(
                 reqwest::header::CACHE_CONTROL,
                 reqwest::header::HeaderValue::from_static("no-cache"),
             );
-            Client::builder()
-                .default_headers(headers)
-                .danger_accept_invalid_certs(accept_invalid_certs)
-                .build()?
+
+            #[cfg(any(feature = "rustls", feature = "native-tls"))]
+            {
+                let accept_invalid_certs = matches!(
+                    std::env::var("ONEIO_ACCEPT_INVALID_CERTS")
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .as_str(),
+                    "true" | "yes" | "y" | "1"
+                );
+                Client::builder()
+                    .default_headers(headers)
+                    .danger_accept_invalid_certs(accept_invalid_certs)
+                    .build()?
+            }
+
+            #[cfg(not(any(feature = "rustls", feature = "native-tls")))]
+            {
+                Client::builder().default_headers(headers).build()?
+            }
         }
     };
     let res = client
