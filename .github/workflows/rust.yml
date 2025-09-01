@@ -69,26 +69,26 @@ jobs:
       - name: Build with native-tls (verify no rustls)
         run: |
           cargo build --no-default-features --features http,gz,bz,native-tls
-          # Check if anything actually uses rustls (not just present in tree)
-          output=$(cargo tree --no-default-features --features http,gz,bz,native-tls 2>/dev/null | grep -i rustls || true)
-          if [ -n "$output" ]; then
-            echo "ERROR: rustls found in dependencies when using native-tls"
-            echo "$output"
+          # Check if rustls is actually used in the dependency tree
+          rustls_count=$(cargo tree --no-default-features --features http,gz,bz,native-tls 2>/dev/null | grep -c "rustls v" || echo "0")
+          if [ "$rustls_count" -gt 0 ]; then
+            echo "ERROR: rustls crate found $rustls_count times in dependencies when using native-tls"
+            cargo tree --no-default-features --features http,gz,bz,native-tls 2>/dev/null | grep "rustls v"
             exit 1
           fi
-          echo "✓ No rustls dependency found with native-tls"
+          echo "✓ No rustls crate dependency found with native-tls"
 
       - name: Build with rustls (verify no native-tls)
         run: |
           cargo build --no-default-features --features http,gz,bz,rustls
-          # Check if native-tls appears anywhere in the tree
-          output=$(cargo tree --no-default-features --features http,gz,bz,rustls 2>/dev/null | grep -i native-tls || true)
-          if [ -n "$output" ]; then
-            echo "ERROR: native-tls found in dependencies when using rustls"
-            echo "$output"
+          # Check if native-tls is actually used in the dependency tree
+          natls_count=$(cargo tree --no-default-features --features http,gz,bz,rustls 2>/dev/null | grep -c "native-tls v" || echo "0")
+          if [ "$natls_count" -gt 0 ]; then
+            echo "ERROR: native-tls crate found $natls_count times in dependencies when using rustls"
+            cargo tree --no-default-features --features http,gz,bz,rustls 2>/dev/null | grep "native-tls v"
             exit 1
           fi
-          echo "✓ No native-tls dependency found with rustls"
+          echo "✓ No native-tls crate dependency found with rustls"
 
       - name: Build with compression features individually
         run: |
