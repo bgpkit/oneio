@@ -117,6 +117,10 @@ indicatif = "0.18"
 name = "s3_operations"
 required-features = ["s3"]
 
+[[example]]
+name = "async_read"
+required-features = ["async"]
+
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.tar.gz"
 pkg-fmt = "tgz"
