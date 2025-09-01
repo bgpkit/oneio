@@ -11,7 +11,7 @@ files from local and remote sources with both synchronous and asynchronous suppo
 ### Quick Start
 
 ```toml
-oneio = "0.19"  # Default: gz, bz, http
+oneio = "0.19"  # Default: gz, bz, https
 ```
 
 ### Feature Selection Guide
@@ -23,16 +23,29 @@ oneio = "0.19"  # Default: gz, bz, http
 oneio = { version = "0.19", default-features = false, features = ["gz", "bz"] }
 ```
 
-**HTTP/HTTPS with compression**:
+**HTTP only (no HTTPS)**:
 ```toml
-oneio = { version = "0.19", default-features = false, features = ["http", "gz", "zstd"] }
+oneio = { version = "0.19", default-features = false, features = ["http", "gz"] }
 ```
 
-**S3-compatible storage (AWS S3, R2, MinIO)**:
+**HTTPS with default rustls**:
 ```toml
-oneio = { version = "0.19", default-features = false, features = ["s3", "http", "gz"] }
+oneio = { version = "0.19", default-features = false, features = ["https", "gz"] }
 ```
-Note: S3 requires the `http` feature.
+
+**HTTPS with custom TLS backend**:
+```toml
+# With rustls
+oneio = { version = "0.19", default-features = false, features = ["http", "rustls", "gz"] }
+
+# With native-tls
+oneio = { version = "0.19", default-features = false, features = ["http", "native-tls", "gz"] }
+```
+
+**S3-compatible storage**:
+```toml
+oneio = { version = "0.19", default-features = false, features = ["s3", "https", "gz"] }
+```
 
 **Async operations**:
 ```toml
@@ -49,19 +62,20 @@ oneio = { version = "0.19", features = ["async"] }
 - `zstd` - Zstandard (balanced)
 
 **Protocols**:
-- `http` - HTTP/HTTPS support
-- `ftp` - FTP support (requires `http`)
+- `http` - HTTP-only support (no TLS)
+- `https` - HTTP/HTTPS with rustls TLS backend (equivalent to `http` + `rustls`)
+- `ftp` - FTP support (requires `http` + TLS backend)
 - `s3` - S3-compatible storage
+
+**TLS Backends** (for HTTPS - mutually exclusive):
+- `rustls` - Pure Rust TLS (use with `http`)
+- `native-tls` - Platform native TLS (use with `http`)
 
 **Additional**:
 - `async` - Async support (limited to gz, bz, zstd for compression)
 - `json` - JSON parsing
 - `digest` - SHA256 digest calculation
 - `cli` - Command-line tool
-
-**TLS Backend** (mutually exclusive):
-- `rustls` - Pure Rust TLS (default)
-- `native-tls` - Platform native TLS
 
 Environment: Set `ONEIO_ACCEPT_INVALID_CERTS=true` to accept invalid certificates.
 

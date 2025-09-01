@@ -82,8 +82,12 @@ oneio = { version = "0.19", features = ["gz", "bz", "http"] }
 #### Documentation
 
 - Updated lib.rs documentation for v0.19 changes
+- Clarified `http` vs `https` feature distinctions:
+  - `http` - HTTP-only support (no TLS)
+  - `https` - HTTP/HTTPS with rustls (equivalent to `http` + `rustls`)
+  - Custom TLS: Use `http` + `rustls` or `http` + `native-tls`
 - Regenerated README from lib.rs documentation
-- Added a clear migration guide and feature explanations
+- Added clear migration guide and feature explanations
 
 ### Dependencies
 
