@@ -121,9 +121,9 @@ pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
 ///     }
 /// }
 /// ```
-pub fn s3_bucket(bucket: &str) -> Result<Box<Bucket>, OneIoError> {
+pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
     dotenvy::dotenv().ok();
-    let mut bucket = Bucket::new(
+    let mut bucket = *Bucket::new(
         bucket,
         Region::from_default_env()?,
         Credentials::new(None, None, None, None, None)?,

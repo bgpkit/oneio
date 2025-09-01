@@ -20,6 +20,7 @@ pub(crate) fn get_ftp_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, One
     let path = parts[3..].join("/");
 
     let mut ftp_stream = suppaftp::FtpStream::connect(socket)?;
+    // use anonymous login
     ftp_stream.login("anonymous", "oneio")?;
     ftp_stream.transfer_type(suppaftp::types::FileType::Binary)?;
     let reader = Box::new(ftp_stream.retr_as_stream(path.as_str())?);

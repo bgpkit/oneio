@@ -22,11 +22,7 @@ pub(crate) fn get_reader(
         .map(|decoder| Box::new(decoder) as Box<dyn Read + Send>)
         .map_err(|e| {
             // Preserve original error information in the message
-            let error_msg = format!("LZ4 decoder initialization failed: {e}");
-            OneIoError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                error_msg,
-            ))
+            OneIoError::Io(e)
         })
 }
 
