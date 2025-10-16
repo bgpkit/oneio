@@ -11,7 +11,7 @@ use std::io::{BufWriter, Read, Write};
 
 #[cfg(feature = "bz")]
 pub(crate) mod bzip2;
-#[cfg(feature = "gz")]
+#[cfg(feature = "any_gz")]
 pub(crate) mod gzip;
 #[cfg(feature = "lz")]
 pub(crate) mod lz4;
@@ -50,7 +50,7 @@ pub(crate) fn get_compression_reader(
     file_suffix: &str,
 ) -> Result<Box<dyn Read + Send>, OneIoError> {
     match file_suffix {
-        #[cfg(feature = "gz")]
+        #[cfg(feature = "any_gz")]
         "gz" | "gzip" | "tgz" => gzip::get_reader(raw_reader),
         #[cfg(feature = "bz")]
         "bz2" | "bz" => bzip2::get_reader(raw_reader),
@@ -97,7 +97,7 @@ pub(crate) fn get_compression_writer(
     file_suffix: &str,
 ) -> Result<Box<dyn Write>, OneIoError> {
     match file_suffix {
-        #[cfg(feature = "gz")]
+        #[cfg(feature = "any_gz")]
         "gz" | "gzip" | "tgz" => gzip::get_writer(raw_writer),
         #[cfg(feature = "bz")]
         "bz2" | "bz" => bzip2::get_writer(raw_writer),

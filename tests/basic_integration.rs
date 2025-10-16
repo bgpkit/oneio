@@ -53,7 +53,7 @@ fn test_local_files() {
     test_read("tests/test_data.txt");
 
     // Test gzip (default feature)
-    #[cfg(feature = "gz")]
+    #[cfg(feature = "any_gz")]
     test_read("tests/test_data.txt.gz");
 
     // Test bzip2 (default feature)
@@ -66,7 +66,7 @@ fn test_writers() {
     // Test writing with default compression formats
     test_write("tests/test_write_data.txt", "tests/test_data.txt");
 
-    #[cfg(feature = "gz")]
+    #[cfg(feature = "any_gz")]
     test_write("tests/test_write_data.txt.gz", "tests/test_data.txt.gz");
 
     #[cfg(feature = "bz")]
@@ -79,7 +79,7 @@ fn test_remote_files() {
     // Test HTTP reading (default feature)
     test_read("https://spaces.bgpkit.org/oneio/test_data.txt");
 
-    #[cfg(feature = "gz")]
+    #[cfg(feature = "any_gz")]
     test_read("https://spaces.bgpkit.org/oneio/test_data.txt.gz");
 
     #[cfg(feature = "bz")]
