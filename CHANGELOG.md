@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.19.1 -- 2025-10-15
+
+### Changed
+- Gzip backend selection via feature flags:
+  - Default feature `gz` switched to use flate2 with the `gz-zlib-rs` backend for improved performance.
+  - New selectors and aliases:
+    - `gz-zlib-rs` — enables `flate2/zlib-rs` (Rust, fast)
+    - `gz-miniz` — enables `flate2/miniz_oxide` (pure Rust, most portable)
+  - Disabled `flate2` default-features to allow explicit backend choice.
+
+### Added
+- Criterion benchmark `benches/gzip_decompress.rs` to measure gzip decompression throughput across backends.
+
+### Usage
+- Default (zlib-rs):
+  - cargo build
+  - cargo bench --bench gzip_decompress --features gz
+- zlib-rs:
+  - cargo build --no-default-features --features gz-zlib-rs
+  - cargo bench --bench gzip_decompress --no-default-features --features gz-zlib-rs
+- miniz_oxide (explicit):
+  - cargo build --no-default-features --features gz-miniz
+  - cargo bench --bench gzip_decompress --no-default-features --features gz-miniz
+
 ## v0.19.0 -- 2025-08-31
 
 ### Breaking Changes
@@ -14,7 +38,7 @@ All notable changes to this project will be documented in this file.
 
 **Migration guide:**
 
-```toml
+```
 # Before (v0.18.x)
 oneio = { version = "0.18", features = ["lib-core", "rustls"] }
 

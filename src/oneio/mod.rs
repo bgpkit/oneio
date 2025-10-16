@@ -552,7 +552,7 @@ fn get_async_compression_reader(
     file_type: &str,
 ) -> Result<Box<dyn AsyncRead + Send + Unpin>, OneIoError> {
     match file_type {
-        #[cfg(all(feature = "async", feature = "gz"))]
+        #[cfg(all(feature = "async", feature = "any_gz"))]
         "gz" | "gzip" => {
             use async_compression::tokio::bufread::GzipDecoder;
             use tokio::io::BufReader;
@@ -608,7 +608,7 @@ mod tests {
 
     const TEST_TEXT: &str = "OneIO test file.\nThis is a test.";
 
-    #[cfg(feature = "gz")]
+    #[cfg(feature = "any_gz")]
     #[test]
     fn test_progress_tracking_local() {
         use std::sync::{Arc, Mutex};
@@ -751,7 +751,7 @@ mod tests {
         }
 
         // Test with compression formats that support async
-        #[cfg(feature = "gz")]
+        #[cfg(feature = "any_gz")]
         {
             match get_reader_async("tests/test_data.txt.gz").await {
                 Ok(mut reader) => {

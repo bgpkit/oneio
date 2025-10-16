@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.19.0"
+version = "0.19.1"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -30,7 +30,8 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 suppaftp = { version = "7.0", optional = true }
 
 # feature: compressions
-flate2 = { version = "1", optional = true }
+# Turn off flate2 default-features so we can explicitly choose backend via features
+flate2 = { version = "1", optional = true, default-features = false }
 bzip2 = { version = "0.6.0", optional = true }
 lz4 = { version = "1.24", optional = true }
 xz2 = { version = "0.1", optional = true }
@@ -45,7 +46,7 @@ serde = { version = "1.0", optional = true }
 serde_json = { version = "1.0", optional = true }
 
 # feature: s3
-rust-s3 = { version = "0.35", optional = true, default-features = false, features = [
+rust-s3 = { version = "0.37", optional = true, default-features = false, features = [
     "sync",
 ] }
 
@@ -75,8 +76,14 @@ https = ["http", "rustls"] # https needs http
 ftp = ["https", "suppaftp"] # ftp needs https
 s3 = ["rust-s3"]
 
-# Compression features (independent)
-gz = ["flate2"]
+gz = ["gz-zlib-rs"]
+# internal feature to enable gzip support
+any_gz = []
+# fastest Rust impl with some unsafe code
+gz-zlib-rs = ["any_gz", "flate2/zlib-rs"]
+# slower pure safe Rust impl
+gz-miniz = ["any_gz", "flate2/miniz_oxide", "flate2/any_impl"]
+
 bz = ["bzip2"]
 lz = ["lz4"]
 xz = ["xz2"]
@@ -111,6 +118,13 @@ tracing-subscriber = "0.3"
 tar = "0.4"
 tokio = { version = "1.0", features = ["macros", "rt"] }
 indicatif = "0.18"
+criterion = { version = "0.5", default-features = false }
+
+# Benchmarks
+[[bench]]
+name = "gzip_decompress"
+harness = false
+required-features = ["any_gz"]
 
 # This list only includes examples which require additional features to run. These are more in the examples' directory.
 [[example]]

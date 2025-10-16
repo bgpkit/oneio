@@ -18,7 +18,7 @@ async fn async_read_local_plain() {
     assert_eq!(content, TEST_TEXT);
 }
 
-#[cfg(feature = "gz")]
+#[cfg(feature = "any_gz")]
 #[tokio::test]
 async fn async_read_local_gzip() {
     let mut reader = oneio::get_reader_async("tests/test_data.txt.gz")
@@ -46,7 +46,7 @@ async fn async_read_http_plain() {
     }
 }
 
-#[cfg(all(feature = "http", feature = "gz"))]
+#[cfg(all(feature = "http", feature = "any_gz"))]
 #[tokio::test]
 async fn async_read_http_gzip() {
     match oneio::get_reader_async("https://spaces.bgpkit.org/oneio/test_data.txt.gz").await {
