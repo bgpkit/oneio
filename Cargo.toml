@@ -1,6 +1,6 @@
 [package]
 name = "oneio"
-version = "0.19.1"
+version = "0.19.2"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 edition = "2021"
 readme = "README.md"
@@ -31,7 +31,7 @@ suppaftp = { version = "7.0", optional = true }
 
 # feature: compressions
 # Turn off flate2 default-features so we can explicitly choose backend via features
-flate2 = { version = "1", optional = true, default-features = false }
+flate2 = { version = "1.1", optional = true, default-features = false }
 bzip2 = { version = "0.6.0", optional = true }
 lz4 = { version = "1.24", optional = true }
 xz2 = { version = "0.1", optional = true }
@@ -79,10 +79,10 @@ s3 = ["rust-s3"]
 gz = ["gz-zlib-rs"]
 # internal feature to enable gzip support
 any_gz = []
-# fastest Rust impl with some unsafe code
+gz-miniz = ["any_gz", "flate2/miniz_oxide"]
 gz-zlib-rs = ["any_gz", "flate2/zlib-rs"]
-# slower pure safe Rust impl
-gz-miniz = ["any_gz", "flate2/miniz_oxide", "flate2/any_impl"]
+gz-zlib-ng = ["any_gz", "flate2/zlib-ng"]
+gz-zlib-cloudflare = ["any_gz", "flate2/cloudflare_zlib"]
 
 bz = ["bzip2"]
 lz = ["lz4"]

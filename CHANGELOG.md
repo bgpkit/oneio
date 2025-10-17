@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.19.2 -- 2025-10-17
+
+### Changed
+
+- Updated `flate2` dependency minimum version to `1.1.0` to include more recent fixes for `zlib-rs` backend.
+- Add more backends for `flate2`:
+  - `gz-zlib-ng` feature for `flate2/zlib-rs-ng`
+  - `gz-zlib-cloudflare` feature for `flate2/cloudflare_zlib`
+
 ## v0.19.1 -- 2025-10-15
 
 ### Changed
