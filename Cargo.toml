@@ -47,7 +47,7 @@ serde_json = { version = "1.0", optional = true }
 
 # feature: s3
 rust-s3 = { version = "0.37", optional = true, default-features = false, features = [
-    "sync",
+    "sync-rustls-tls",
 ] }
 
 # feature: cli
@@ -134,6 +134,10 @@ required-features = ["s3"]
 [[example]]
 name = "async_read"
 required-features = ["async"]
+
+[[example]]
+name = "test_crypto_provider"
+required-features = ["https"]
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.tar.gz"

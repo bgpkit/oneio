@@ -12,6 +12,9 @@ pub(crate) fn get_ftp_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, One
         return Err(OneIoError::NotSupported(path.to_string()));
     }
 
+    #[cfg(any(feature = "rustls", feature = "https", feature = "ftp"))]
+    super::crypto::ensure_default_provider()?;
+
     let parts = path.split('/').collect::<Vec<&str>>();
     let socket = match parts[2].contains(':') {
         true => parts[2].to_string(),
@@ -34,10 +37,8 @@ pub(crate) fn get_http_reader_raw(
 ) -> Result<reqwest::blocking::Response, OneIoError> {
     dotenvy::dotenv().ok();
 
-    #[cfg(feature = "rustls_sys")]
-    rustls_sys::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .ok();
+    #[cfg(any(feature = "rustls", feature = "https"))]
+    super::crypto::ensure_default_provider()?;
 
     let client = match opt_client {
         Some(c) => c,
@@ -117,6 +118,9 @@ where
     K: Into<String>,
     V: Into<String>,
 {
+    #[cfg(any(feature = "rustls", feature = "https"))]
+    super::crypto::ensure_default_provider()?;
+    
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
     let mut header_map = HeaderMap::new();
     for (k, v) in headers {

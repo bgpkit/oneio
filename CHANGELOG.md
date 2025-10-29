@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- New `crypto` module with `ensure_default_provider()` helper function to initialize rustls crypto providers
+  - Automatically tries AWS-LC first, then falls back to ring
+  - Called automatically from all HTTPS/S3/FTP code paths
+  - Can be called explicitly at startup for better control over initialization
+  - Fully thread-safe and idempotent
+  - Prevents "Could not automatically determine the process-level CryptoProvider" panic
+
+### Changed
+- All HTTPS, S3, and FTP operations now automatically initialize the rustls crypto provider on first use
+- Added comprehensive documentation and examples for crypto provider initialization
+
 ## v0.19.2 -- 2025-10-17
 
 ### Changed
