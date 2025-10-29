@@ -103,6 +103,7 @@ native-tls = [
     "rust-s3?/sync-native-tls",
 ]
 rustls = [
+    "dep:rustls_sys",
     "reqwest?/rustls-tls",
     "suppaftp?/rustls",
     "rust-s3?/sync-rustls-tls"

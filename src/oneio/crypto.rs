@@ -50,7 +50,7 @@ use crate::OneIoError;
 #[cfg(any(feature = "rustls", feature = "https", feature = "s3", feature = "ftp"))]
 pub fn ensure_default_provider() -> Result<(), OneIoError> {
     // Check if a provider is already installed
-    #[cfg(feature = "rustls_sys")]
+    #[cfg(feature = "rustls")]
     {
         if rustls_sys::crypto::CryptoProvider::get_default().is_some() {
             return Ok(());
@@ -70,24 +70,24 @@ pub fn ensure_default_provider() -> Result<(), OneIoError> {
 
         // Try ring as fallback
         match rustls_sys::crypto::ring::default_provider().install_default() {
-            Ok(_) => return Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => {
                 // If installation failed because a provider is already installed, that's OK
                 if rustls_sys::crypto::CryptoProvider::get_default().is_some() {
                     return Ok(());
                 }
                 // Both failed and no provider is installed
-                return Err(OneIoError::NotSupported(format!(
+                Err(OneIoError::NotSupported(format!(
                     "Failed to install rustls crypto provider: {:?}",
                     e
-                )));
+                )))
             }
         }
     }
 
-    #[cfg(not(feature = "rustls_sys"))]
+    #[cfg(not(feature = "rustls"))]
     {
-        // If rustls_sys is not available, that's fine - we're not using rustls
+        // If rustls is not enabled, that's fine - we're not using it
         Ok(())
     }
 }
@@ -111,7 +111,7 @@ mod tests {
         assert!(result.is_ok(), "ensure_default_provider should succeed");
     }
 
-    #[cfg(feature = "rustls_sys")]
+    #[cfg(feature = "rustls")]
     #[test]
     fn test_provider_installed() {
         // After calling ensure_default_provider, a provider should be available

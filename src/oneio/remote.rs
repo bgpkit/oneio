@@ -293,10 +293,9 @@ pub(crate) fn remote_file_exists(path: &str) -> Result<bool, OneIoError> {
     match get_protocol(path) {
         Some(protocol) => match protocol.as_str() {
             "http" | "https" => {
-                #[cfg(feature = "rustls_sys")]
-                rustls_sys::crypto::aws_lc_rs::default_provider()
-                    .install_default()
-                    .ok();
+                #[cfg(any(feature = "rustls", feature = "https"))]
+                super::crypto::ensure_default_provider()?;
+
                 let client = Client::builder()
                     .timeout(std::time::Duration::from_secs(2))
                     .build()?;
