@@ -11,10 +11,15 @@ All notable changes to this project will be documented in this file.
   - Can be called explicitly at startup for better control over initialization
   - Fully thread-safe and idempotent
   - Prevents "Could not automatically determine the process-level CryptoProvider" panic
+- GitHub Copilot custom instructions file (`.github/copilot-instructions.md`) documenting development practices
 
 ### Changed
 - All HTTPS, S3, and FTP operations now automatically initialize the rustls crypto provider on first use
 - Added comprehensive documentation and examples for crypto provider initialization
+- `rustls` feature now explicitly includes `dep:rustls_sys` dependency
+- Simplified redundant feature flag checks (since `https` → `rustls`, only check `rustls`)
+- Split CI workflow: formatting check now runs as separate independent job for faster feedback
+- Updated `remote_file_exists()` to use `ensure_default_provider()` helper
 
 ## v0.19.2 -- 2025-10-17
 

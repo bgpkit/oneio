@@ -9,8 +9,8 @@ OneIO is a Rust library providing unified IO operations for reading and writing 
 1. **Format code**: `cargo fmt`
 2. **Run linter**: `cargo clippy --all-features` and fix all warnings
 3. **Update README if lib.rs docs changed**: `cargo readme > README.md`
-4. **Run tests**: `cargo test --all-features`
-5. **Update CHANGELOG.md**: Add entries under `[Unreleased]` section
+4. **Update CHANGELOG.md**: Add entries under `[Unreleased]` section
+5. **Run tests**: `cargo test --all-features`
 
 ### Formatting Rules
 - Always run `cargo fmt` before completing any task
@@ -26,6 +26,19 @@ OneIO is a Rust library providing unified IO operations for reading and writing 
 - Keep documentation examples up-to-date
 - Add doc comments for all public APIs
 - Include usage examples in module-level documentation
+
+### Changelog Requirements
+- **Always update CHANGELOG.md** when making changes
+- Add entries under the `[Unreleased]` section
+- Use proper formatting:
+  - `### Added` - for new features
+  - `### Changed` - for changes in existing functionality
+  - `### Deprecated` - for soon-to-be removed features
+  - `### Removed` - for now removed features
+  - `### Fixed` - for bug fixes
+  - `### Security` - for security fixes
+- Be specific and clear about what changed
+- Include context for why changes were made when relevant
 
 ## Commit and PR Guidelines
 
@@ -164,5 +177,6 @@ cargo test --features http,gz,bz
 - Test thoroughly with different features
 - Document changes clearly
 - **Always run cargo fmt and cargo clippy before committing**
+- **Always update CHANGELOG.md with changes**
 - **No emojis in commits or PRs**
 - **Regenerate README.md when lib.rs docs change**
