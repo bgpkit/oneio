@@ -47,7 +47,7 @@ use crate::OneIoError;
 ///     // Rest of your application...
 /// }
 /// ```
-#[cfg(any(feature = "rustls", feature = "https", feature = "s3", feature = "ftp"))]
+#[cfg(feature = "rustls")]
 pub fn ensure_default_provider() -> Result<(), OneIoError> {
     // Check if a provider is already installed
     #[cfg(feature = "rustls")]
@@ -94,8 +94,8 @@ pub fn ensure_default_provider() -> Result<(), OneIoError> {
 
 /// Ensures that a default crypto provider is installed for rustls.
 ///
-/// This is a no-op when rustls features are not enabled.
-#[cfg(not(any(feature = "rustls", feature = "https", feature = "s3", feature = "ftp")))]
+/// This is a no-op when rustls feature is not enabled.
+#[cfg(not(feature = "rustls"))]
 pub fn ensure_default_provider() -> Result<(), OneIoError> {
     Ok(())
 }

@@ -311,7 +311,7 @@ mod oneio;
 
 pub use error::OneIoError;
 
-#[cfg(any(feature = "rustls", feature = "https", feature = "s3", feature = "ftp"))]
+#[cfg(feature = "rustls")]
 pub mod crypto {
     //! Crypto provider initialization for rustls.
     pub use crate::oneio::crypto::*;
