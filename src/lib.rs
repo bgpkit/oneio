@@ -5,7 +5,7 @@ files from local and remote sources with both synchronous and asynchronous suppo
 ## Quick Start
 
 ```toml
-oneio = "0.19"  # Default: gz, bz, https
+oneio = "0.20"  # Default: gz, bz, https
 ```
 
 ## Feature Selection Guide
@@ -14,36 +14,36 @@ oneio = "0.19"  # Default: gz, bz, https
 
 **Local files only:**
 ```toml
-oneio = { version = "0.19", default-features = false, features = ["gz", "bz"] }
+oneio = { version = "0.20", default-features = false, features = ["gz", "bz"] }
 ```
 
 **HTTP only (no HTTPS)**:
 ```toml
-oneio = { version = "0.19", default-features = false, features = ["http", "gz"] }
+oneio = { version = "0.20", default-features = false, features = ["http", "gz"] }
 ```
 
 **HTTPS with default rustls**:
 ```toml
-oneio = { version = "0.19", default-features = false, features = ["https", "gz"] }
+oneio = { version = "0.20", default-features = false, features = ["https", "gz"] }
 ```
 
 **HTTPS with custom TLS backend**:
 ```toml
 # With rustls
-oneio = { version = "0.19", default-features = false, features = ["http", "rustls", "gz"] }
+oneio = { version = "0.20", default-features = false, features = ["http", "rustls", "gz"] }
 
 # With native-tls
-oneio = { version = "0.19", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.20", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 **S3-compatible storage**:
 ```toml
-oneio = { version = "0.19", default-features = false, features = ["s3", "https", "gz"] }
+oneio = { version = "0.20", default-features = false, features = ["s3", "https", "gz"] }
 ```
 
 **Async operations**:
 ```toml
-oneio = { version = "0.19", features = ["async"] }
+oneio = { version = "0.20", features = ["async"] }
 ```
 
 ### Available Features
@@ -287,7 +287,7 @@ This is particularly useful in libraries or applications that want to:
 
 ## Error Handling
 
-Three error types in v0.19:
+Three error types in v0.20:
 
 ```rust
 use oneio::OneIoError;

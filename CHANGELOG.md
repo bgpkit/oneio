@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## v0.20.0 -- 2025-10-29
 
 ### Added
 - New `crypto` module with `ensure_default_provider()` helper function to initialize rustls crypto providers
