@@ -73,6 +73,11 @@ oneio = { version = "0.19", features = ["async"] }
 
 Environment: Set `ONEIO_ACCEPT_INVALID_CERTS=true` to accept invalid certificates.
 
+**Crypto Provider Initialization**: When using rustls features (`https`, `s3`, `ftp`), oneio
+automatically initializes the crypto provider (AWS-LC or ring) on first use. You can also
+initialize it explicitly at startup using [`crypto::ensure_default_provider()`] for better
+control over error handling.
+
 ## Usages
 
 ### Reading Files
@@ -255,6 +260,31 @@ let objects = s3_list("my-bucket", "path/", Some("/".to_string()), false)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
+## Crypto Provider Initialization (Rustls)
+
+When using HTTPS, S3, or FTP features with rustls, oneio automatically initializes
+a crypto provider (AWS-LC or ring) on first use. For more control, you can initialize
+it explicitly at startup:
+
+```rust,ignore
+use oneio;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize crypto provider explicitly at startup
+    oneio::crypto::ensure_default_provider()?;
+
+    // Now all HTTPS/S3/FTP operations will work
+    let content = oneio::read_to_string("https://example.com/data.txt")?;
+
+    Ok(())
+}
+```
+
+This is particularly useful in libraries or applications that want to:
+- Handle initialization errors early
+- Control when the provider is set up
+- Make the dependency on crypto providers explicit
+
 ## Error Handling
 
 Three error types in v0.19:
@@ -281,6 +311,11 @@ mod oneio;
 
 pub use error::OneIoError;
 
+#[cfg(feature = "rustls")]
+pub mod crypto {
+    //! Crypto provider initialization for rustls.
+    pub use crate::oneio::crypto::*;
+}
 #[cfg(feature = "digest")]
 pub use crate::oneio::digest::*;
 #[cfg(any(feature = "http", feature = "ftp"))]

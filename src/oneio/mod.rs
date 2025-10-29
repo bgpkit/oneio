@@ -1,4 +1,6 @@
 pub mod compressions;
+#[cfg(feature = "rustls")]
+pub mod crypto;
 #[cfg(feature = "digest")]
 pub mod digest;
 #[cfg(any(feature = "http", feature = "ftp"))]
@@ -253,6 +255,9 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
     match get_protocol(path) {
         #[cfg(feature = "http")]
         Some(protocol) if protocol == "http" || protocol == "https" => {
+            #[cfg(feature = "rustls")]
+            crypto::ensure_default_provider()?;
+
             // HEAD request to get Content-Length
             let client = reqwest::blocking::Client::new();
             let response = client.head(path).send()?;
@@ -510,6 +515,9 @@ async fn get_async_reader_raw(path: &str) -> Result<Box<dyn AsyncRead + Send + U
     let raw_reader: Box<dyn AsyncRead + Send + Unpin> = match get_protocol(path) {
         #[cfg(feature = "http")]
         Some(protocol) if protocol == "http" || protocol == "https" => {
+            #[cfg(feature = "rustls")]
+            crypto::ensure_default_provider()?;
+
             let response = reqwest::get(path).await?;
             let stream = response
                 .bytes_stream()
