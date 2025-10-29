@@ -257,7 +257,7 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
         Some(protocol) if protocol == "http" || protocol == "https" => {
             #[cfg(any(feature = "rustls", feature = "https"))]
             crypto::ensure_default_provider()?;
-            
+
             // HEAD request to get Content-Length
             let client = reqwest::blocking::Client::new();
             let response = client.head(path).send()?;
@@ -517,7 +517,7 @@ async fn get_async_reader_raw(path: &str) -> Result<Box<dyn AsyncRead + Send + U
         Some(protocol) if protocol == "http" || protocol == "https" => {
             #[cfg(any(feature = "rustls", feature = "https"))]
             crypto::ensure_default_provider()?;
-            
+
             let response = reqwest::get(path).await?;
             let stream = response
                 .bytes_stream()

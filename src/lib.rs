@@ -272,10 +272,10 @@ use oneio;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize crypto provider explicitly at startup
     oneio::crypto::ensure_default_provider()?;
-    
+
     // Now all HTTPS/S3/FTP operations will work
     let content = oneio::read_to_string("https://example.com/data.txt")?;
-    
+
     Ok(())
 }
 ```

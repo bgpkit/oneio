@@ -9,12 +9,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize crypto provider explicitly
     oneio::crypto::ensure_default_provider()?;
     println!("✓ Crypto provider initialized successfully!");
-    
+
     // Test HTTPS download - crypto provider is already set up
     println!("\nDownloading test file via HTTPS...");
     let content = oneio::read_to_string("https://spaces.bgpkit.org/oneio/test_data.txt")?;
     println!("✓ Downloaded content:\n{}", content.trim());
-    
+
     println!("\n✓ All operations completed successfully!");
     Ok(())
 }

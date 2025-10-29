@@ -123,10 +123,10 @@ pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
 /// ```
 pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
     dotenvy::dotenv().ok();
-    
+
     #[cfg(any(feature = "rustls", feature = "https", feature = "s3"))]
     super::crypto::ensure_default_provider()?;
-    
+
     let mut bucket = *Bucket::new(
         bucket,
         Region::from_default_env()?,

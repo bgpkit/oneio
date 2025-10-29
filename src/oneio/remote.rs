@@ -120,7 +120,7 @@ where
 {
     #[cfg(any(feature = "rustls", feature = "https"))]
     super::crypto::ensure_default_provider()?;
-    
+
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
     let mut header_map = HeaderMap::new();
     for (k, v) in headers {
