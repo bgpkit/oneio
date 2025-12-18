@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- `rustls` feature now enables both `rustls-tls-native-roots` and `rustls-tls-webpki-roots` for reqwest
+  - Provides support for system certificates (including those installed by Cloudflare WARP or corporate VPNs)
+  - Falls back to bundled Mozilla certificates in minimal environments
+  - Both certificate stores are merged, providing maximum compatibility
+
 ## v0.20.0 -- 2025-10-29
 
 ### Added

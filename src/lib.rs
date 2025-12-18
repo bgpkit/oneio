@@ -62,7 +62,7 @@ oneio = { version = "0.20", features = ["async"] }
 - `s3` - S3-compatible storage
 
 **TLS Backends** (for HTTPS - mutually exclusive):
-- `rustls` - Pure Rust TLS (use with `http`)
+- `rustls` - Pure Rust TLS (use with `http`). Uses both system certificates and bundled Mozilla certificates for maximum compatibility with corporate VPNs and minimal environments.
 - `native-tls` - Platform native TLS (use with `http`)
 
 **Additional**:
