@@ -104,7 +104,8 @@ native-tls = [
 ]
 rustls = [
     "dep:rustls_sys",
-    "reqwest?/rustls-tls",
+    "reqwest?/rustls-tls-native-roots",
+    "reqwest?/rustls-tls-webpki-roots",
     "suppaftp?/rustls",
     "rust-s3?/sync-rustls-tls"
 ]
