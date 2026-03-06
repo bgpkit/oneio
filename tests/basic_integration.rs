@@ -1,7 +1,6 @@
 //! Basic integration tests using only default features (gz, bz, http)
 //! These tests should always pass with `cargo test`
 
-use oneio;
 use std::io::{Read, Write};
 
 const TEST_TEXT: &str = "OneIO test file.\nThis is a test.";

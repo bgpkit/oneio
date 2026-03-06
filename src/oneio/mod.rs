@@ -21,12 +21,8 @@ use std::path::Path;
 use futures::StreamExt;
 
 /// Extracts the protocol from a given path.
-pub(crate) fn get_protocol(path: &str) -> Option<String> {
-    let parts = path.split("://").collect::<Vec<&str>>();
-    if parts.len() < 2 {
-        return None;
-    }
-    Some(parts[0].to_string())
+pub(crate) fn get_protocol(path: &str) -> Option<&str> {
+    path.split_once("://").map(|(protocol, _)| protocol)
 }
 
 pub fn get_writer_raw(path: &str) -> Result<BufWriter<File>, OneIoError> {
@@ -40,7 +36,7 @@ pub fn get_writer_raw(path: &str) -> Result<BufWriter<File>, OneIoError> {
 
 pub fn get_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     let raw_reader: Box<dyn Read + Send> = match get_protocol(path) {
-        Some(protocol) => match protocol.as_str() {
+        Some(protocol) => match protocol {
             #[cfg(feature = "http")]
             "http" | "https" => {
                 let response = remote::get_http_reader_raw(path, None)?;
@@ -54,7 +50,7 @@ pub fn get_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
             #[cfg(feature = "s3")]
             "s3" | "r2" => {
                 let (bucket, path) = s3::s3_url_parse(path)?;
-                Box::new(s3::s3_reader(bucket.as_str(), path.as_str())?)
+                s3::s3_reader(bucket.as_str(), path.as_str())?
             }
             _ => {
                 return Err(OneIoError::NotSupported(path.to_string()));
@@ -131,11 +127,9 @@ pub fn get_cache_reader(
 
     // read all to cache file, no encode/decode happens
     let mut reader = get_reader_raw(path)?;
-    let mut data: Vec<u8> = vec![];
-    reader.read_to_end(&mut data)?;
     let mut writer = get_writer_raw(cache_file_path.as_str())?;
-    writer.write_all(&data)?;
-    drop(writer);
+    std::io::copy(&mut reader, &mut writer)?;
+    writer.flush()?;
 
     // return reader from cache file
     get_reader(cache_file_path.as_str())
@@ -163,7 +157,7 @@ pub fn get_cache_reader(
 /// };
 /// ```
 pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
-    let output_file = BufWriter::new(File::create(path)?);
+    let output_file = get_writer_raw(path)?;
 
     let file_type = path.rsplit('.').next().unwrap_or("");
     get_compression_writer(output_file, file_type)
@@ -255,24 +249,7 @@ pub fn get_content_length(path: &str) -> Result<u64, OneIoError> {
     match get_protocol(path) {
         #[cfg(feature = "http")]
         Some(protocol) if protocol == "http" || protocol == "https" => {
-            #[cfg(feature = "rustls")]
-            crypto::ensure_default_provider()?;
-
-            // HEAD request to get Content-Length
-            let client = reqwest::blocking::Client::new();
-            let response = client.head(path).send()?;
-
-            response
-                .headers()
-                .get("content-length")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.parse().ok())
-                .ok_or_else(|| {
-                    OneIoError::NotSupported(
-                        "Cannot determine file size - server doesn't provide Content-Length"
-                            .to_string(),
-                    )
-                })
+            remote::get_http_content_length(path)
         }
         #[cfg(feature = "ftp")]
         Some(protocol) if protocol == "ftp" => {
@@ -464,8 +441,8 @@ pub async fn read_to_string_async(path: &str) -> Result<String, OneIoError> {
 
 /// Downloads a file asynchronously from a URL to a local path
 ///
-/// This is the async version of `download()`. It supports all protocols and
-/// handles decompression if needed.
+/// This is the async version of `download()`. It preserves the raw bytes from
+/// the source, matching the synchronous `download()` behavior.
 ///
 /// # Arguments
 /// * `url` - Source URL to download from
@@ -491,19 +468,17 @@ pub async fn read_to_string_async(path: &str) -> Result<String, OneIoError> {
 #[cfg(feature = "async")]
 pub async fn download_async(url: &str, path: &str) -> Result<(), OneIoError> {
     use tokio::fs::File;
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{copy, AsyncWriteExt};
 
-    let mut reader = get_reader_async(url).await?;
-    let mut file = File::create(path).await?;
-
-    let mut buffer = vec![0u8; 8192];
-    loop {
-        let bytes_read = reader.read(&mut buffer).await?;
-        if bytes_read == 0 {
-            break;
+    if let Some(parent) = Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            tokio::fs::create_dir_all(parent).await?;
         }
-        file.write_all(&buffer[..bytes_read]).await?;
     }
+
+    let mut reader = get_async_reader_raw(url).await?;
+    let mut file = File::create(path).await?;
+    copy(&mut reader, &mut file).await?;
 
     file.flush().await?;
     Ok(())
@@ -612,8 +587,10 @@ fn get_async_compression_reader(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any(feature = "any_gz", feature = "http"))]
     use std::io::Read;
 
+    #[cfg(any(feature = "any_gz", feature = "http", feature = "async"))]
     const TEST_TEXT: &str = "OneIO test file.\nThis is a test.";
 
     #[cfg(feature = "any_gz")]

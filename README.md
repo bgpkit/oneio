@@ -191,6 +191,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "local_data.csv.gz"
     ).await?;
 
+    // download_async preserves the remote bytes.
+
     Ok(())
 }
 ```
@@ -295,6 +297,7 @@ match oneio::get_reader("file.txt") {
     Ok(reader) => { /* use reader */ },
     Err(OneIoError::Io(e)) => { /* filesystem error */ },
     Err(OneIoError::Network(e)) => { /* network error */ },
+    Err(OneIoError::Status { service, code }) => { /* remote status error */ },
     Err(OneIoError::NotSupported(msg)) => { /* feature not compiled */ },
 }
 ```

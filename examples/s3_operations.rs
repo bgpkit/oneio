@@ -32,27 +32,18 @@ fn main() {
     info!("error if file does not exist");
     let res = s3_stats("oneio-test", "test/README___NON_EXISTS.md");
     assert!(res.is_err());
-    assert_eq!(
-        false,
-        s3_exists("oneio-test", "test/README___NON_EXISTS.md").unwrap()
-    );
-    assert_eq!(true, s3_exists("oneio-test", "test/README.md").unwrap());
+    assert!(!s3_exists("oneio-test", "test/README___NON_EXISTS.md").unwrap());
+    assert!(s3_exists("oneio-test", "test/README.md").unwrap());
 
     info!("copy S3 file to a different location");
     let res = s3_copy("oneio-test", "test/README.md", "test/README-temporary.md");
     assert!(res.is_ok());
-    assert_eq!(
-        true,
-        s3_exists("oneio-test", "test/README-temporary.md").unwrap()
-    );
+    assert!(s3_exists("oneio-test", "test/README-temporary.md").unwrap());
 
     info!("delete temporary copied S3 file");
     let res = s3_delete("oneio-test", "test/README-temporary.md");
     assert!(res.is_ok());
-    assert_eq!(
-        false,
-        s3_exists("oneio-test", "test/README-temporary.md").unwrap()
-    );
+    assert!(!s3_exists("oneio-test", "test/README-temporary.md").unwrap());
 
     info!("list S3 files");
     let res = s3_list("oneio-test", "test/", Some("/".to_string()), false).unwrap();

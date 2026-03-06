@@ -116,6 +116,6 @@ mod tests {
         assert_eq!(data.purpose, "test".to_string());
         assert_eq!(data.version, 1);
         assert_eq!(data.meta.float, 1.1);
-        assert_eq!(data.meta.success, true);
+        assert!(data.meta.success);
     }
 }

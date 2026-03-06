@@ -10,7 +10,8 @@ use crate::OneIoError;
 use s3::creds::Credentials;
 use s3::serde_types::{HeadObjectResult, ListBucketResult};
 use s3::{Bucket, Region};
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Write};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
 /// Checks if the necessary environment variables for AWS S3 are set.
 ///
@@ -83,13 +84,125 @@ pub fn s3_env_check() -> Result<(), OneIoError> {
 ///
 /// Returns a `Result` containing the bucket and key as a tuple, or a `OneIoError` if parsing fails.
 pub fn s3_url_parse(path: &str) -> Result<(String, String), OneIoError> {
-    let parts = path.split('/').collect::<Vec<&str>>();
-    if parts.len() < 3 {
+    let (_, remaining) = path
+        .split_once("://")
+        .ok_or_else(|| OneIoError::NotSupported(format!("Invalid S3 URL: {path}")))?;
+    let (bucket, key) = remaining
+        .split_once('/')
+        .ok_or_else(|| OneIoError::NotSupported(format!("Invalid S3 URL: {path}")))?;
+    if bucket.is_empty() || key.is_empty() {
         return Err(OneIoError::NotSupported(format!("Invalid S3 URL: {path}")));
     }
-    let bucket = parts[2];
-    let key = parts[3..].join("/");
-    Ok((bucket.to_string(), key))
+    Ok((bucket.to_string(), key.to_string()))
+}
+
+enum StreamMessage {
+    Chunk(Vec<u8>),
+    Error(String),
+    Eof,
+}
+
+struct StreamWriter {
+    sender: SyncSender<StreamMessage>,
+    closed: bool,
+}
+
+impl StreamWriter {
+    fn new(sender: SyncSender<StreamMessage>) -> Self {
+        Self {
+            sender,
+            closed: false,
+        }
+    }
+
+    fn send_error(&mut self, err: std::io::Error) -> std::io::Result<()> {
+        self.closed = true;
+        self.sender
+            .send(StreamMessage::Error(err.to_string()))
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream closed"))
+    }
+
+    fn close(&mut self) -> std::io::Result<()> {
+        if self.closed {
+            return Ok(());
+        }
+        self.closed = true;
+        self.sender
+            .send(StreamMessage::Eof)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream closed"))
+    }
+}
+
+impl Write for StreamWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.sender
+            .send(StreamMessage::Chunk(buf.to_vec()))
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream closed"))?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Drop for StreamWriter {
+    fn drop(&mut self) {
+        let _ = self.close();
+    }
+}
+
+struct StreamReader {
+    receiver: Receiver<StreamMessage>,
+    current_chunk: Cursor<Vec<u8>>,
+    done: bool,
+}
+
+impl StreamReader {
+    fn new(receiver: Receiver<StreamMessage>) -> Self {
+        Self {
+            receiver,
+            current_chunk: Cursor::new(Vec::new()),
+            done: false,
+        }
+    }
+}
+
+impl Read for StreamReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        loop {
+            let bytes_read = self.current_chunk.read(buf)?;
+            if bytes_read > 0 {
+                return Ok(bytes_read);
+            }
+
+            if self.done {
+                return Ok(0);
+            }
+
+            match self.receiver.recv() {
+                Ok(StreamMessage::Chunk(chunk)) => {
+                    self.current_chunk = Cursor::new(chunk);
+                }
+                Ok(StreamMessage::Error(message)) => {
+                    self.done = true;
+                    return Err(std::io::Error::other(message));
+                }
+                Ok(StreamMessage::Eof) => {
+                    self.done = true;
+                    return Ok(0);
+                }
+                Err(_) => {
+                    self.done = true;
+                    return Err(std::io::Error::other("S3 stream closed unexpectedly"));
+                }
+            }
+        }
+    }
 }
 
 /// Creates an S3 bucket object with the specified bucket name.
@@ -172,9 +285,26 @@ pub fn s3_bucket(bucket: &str) -> Result<Bucket, OneIoError> {
 /// ```
 pub fn s3_reader(bucket: &str, path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     let bucket = s3_bucket(bucket)?;
-    let object = bucket.get_object(path)?;
-    let buf: Vec<u8> = object.to_vec();
-    Ok(Box::new(Cursor::new(buf)))
+    let path = path.to_string();
+    let (sender, receiver) = sync_channel(8);
+
+    std::thread::spawn(move || {
+        let mut writer = StreamWriter::new(sender);
+        match bucket.get_object_to_writer(path, &mut writer) {
+            Ok(200..=299) => {
+                let _ = writer.close();
+            }
+            Ok(code) => {
+                let _ =
+                    writer.send_error(std::io::Error::other(format!("S3 status error: {code}")));
+            }
+            Err(err) => {
+                let _ = writer.send_error(std::io::Error::other(err.to_string()));
+            }
+        }
+    });
+
+    Ok(Box::new(StreamReader::new(receiver)))
 }
 
 /// Uploads a file to an S3 bucket at the specified path.
@@ -316,9 +446,10 @@ pub fn s3_download(bucket: &str, s3_path: &str, file_path: &str) -> Result<(), O
     let res: u16 = bucket.get_object_to_writer(s3_path, &mut output_file)?;
     match res {
         200..=299 => Ok(()),
-        _ => Err(OneIoError::Network(Box::new(std::io::Error::other(
-            format!("S3 HTTP error: {res}"),
-        )))),
+        _ => Err(OneIoError::Status {
+            service: "S3",
+            code: res,
+        }),
     }
 }
 
@@ -360,9 +491,10 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
     let (head_object, code): (HeadObjectResult, u16) = bucket.head_object(path)?;
     match code {
         200..=299 => Ok(head_object),
-        _ => Err(OneIoError::Network(Box::new(std::io::Error::other(
-            format!("S3 HTTP error: {code}"),
-        )))),
+        _ => Err(OneIoError::Status {
+            service: "S3",
+            code,
+        }),
     }
 }
 
@@ -394,25 +526,11 @@ pub fn s3_stats(bucket: &str, path: &str) -> Result<HeadObjectResult, OneIoError
 pub fn s3_exists(bucket: &str, path: &str) -> Result<bool, OneIoError> {
     match s3_stats(bucket, path) {
         Ok(_) => Ok(true),
-        Err(err) => {
-            // Check if this is a 404 network error by parsing the status code
-            if let OneIoError::Network(boxed_err) = &err {
-                let error_msg = boxed_err.to_string();
-                if error_msg.starts_with("S3 HTTP error: ") {
-                    // Parse the status code from the structured error message
-                    if let Some(code_str) = error_msg.strip_prefix("S3 HTTP error: ") {
-                        if let Ok(status_code) = code_str.parse::<u16>() {
-                            return match status_code {
-                                404 => Ok(false), // Not Found
-                                // 403 Forbidden means permission denied; propagate as error
-                                _ => Err(err), // Other errors should propagate
-                            };
-                        }
-                    }
-                }
-            }
-            Err(err)
-        }
+        Err(OneIoError::Status {
+            service: "S3",
+            code: 404,
+        }) => Ok(false),
+        Err(err) => Err(err),
     }
 }
 
@@ -480,6 +598,7 @@ pub fn s3_list(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
 
     #[test]
     fn test_s3_url_parse() {
@@ -535,5 +654,39 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_stream_reader_reads_in_order() {
+        let (sender, receiver) = sync_channel(2);
+        let writer_thread = std::thread::spawn(move || {
+            let mut writer = StreamWriter::new(sender);
+            writer.write_all(b"hello ").unwrap();
+            writer.write_all(b"world").unwrap();
+            writer.close().unwrap();
+        });
+
+        let mut reader = StreamReader::new(receiver);
+        let mut output = String::new();
+        reader.read_to_string(&mut output).unwrap();
+        writer_thread.join().unwrap();
+
+        assert_eq!(output, "hello world");
+    }
+
+    #[test]
+    fn test_stream_reader_propagates_error() {
+        let (sender, receiver) = sync_channel(2);
+        let mut writer = StreamWriter::new(sender);
+        writer.write_all(b"hello").unwrap();
+        writer
+            .send_error(std::io::Error::other("stream failed"))
+            .unwrap();
+
+        let mut reader = StreamReader::new(receiver);
+        let mut buf = [0; 5];
+        reader.read_exact(&mut buf).unwrap();
+        assert_eq!(&buf, b"hello");
+        assert!(reader.read(&mut [0; 1]).is_err());
     }
 }

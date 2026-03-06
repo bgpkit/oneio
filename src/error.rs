@@ -11,6 +11,10 @@ pub enum OneIoError {
     #[error("{0}")]
     Network(Box<dyn std::error::Error + Send + Sync>),
 
+    /// Structured status errors from remote services
+    #[error("{service} status error: {code}")]
+    Status { service: &'static str, code: u16 },
+
     /// Feature not supported/compiled
     #[error("Not supported: {0}")]
     NotSupported(String),

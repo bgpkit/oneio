@@ -79,7 +79,7 @@ s3 = ["rust-s3"]
 gz = ["gz-zlib-rs"]
 # internal feature to enable gzip support
 any_gz = []
-gz-miniz = ["any_gz", "flate2/miniz_oxide"]
+gz-miniz = ["any_gz", "flate2/rust_backend"]
 gz-zlib-rs = ["any_gz", "flate2/zlib-rs"]
 gz-zlib-ng = ["any_gz", "flate2/zlib-ng"]
 gz-zlib-cloudflare = ["any_gz", "flate2/cloudflare_zlib"]
@@ -127,6 +127,11 @@ criterion = { version = "0.5", default-features = false }
 name = "gzip_decompress"
 harness = false
 required-features = ["any_gz"]
+
+[[bench]]
+name = "bzip2_decompress"
+harness = false
+required-features = ["bz"]
 
 # This list only includes examples which require additional features to run. These are more in the examples' directory.
 [[example]]
