@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Stream cache writes to disk via `std::io::copy` instead of buffering the full payload in memory
+- `download_async()` now preserves raw bytes, matching `download()`
+- Default blocking HTTP clients are reused across reads and content-length probes
+- S3 status failures now use structured errors instead of string parsing
+- S3 readers now stream data through a bounded channel instead of materializing the full object in memory
+
+### Added
+- Added `bzip2_decompress` benchmark coverage
+- Added a benchmark helper script for comparing gzip backend feature flags and bz2 decompression
+
 ## v0.20.1 -- 2025-12-18
 
 ### Changed

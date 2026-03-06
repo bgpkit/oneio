@@ -5,6 +5,11 @@ use crate::OneIoError;
 #[cfg(feature = "http")]
 use reqwest::blocking::Client;
 use std::io::Read;
+#[cfg(feature = "http")]
+use std::sync::OnceLock;
+
+#[cfg(feature = "http")]
+static DEFAULT_HTTP_CLIENT: OnceLock<Result<Client, String>> = OnceLock::new();
 
 #[cfg(feature = "ftp")]
 pub(crate) fn get_ftp_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
@@ -15,19 +20,77 @@ pub(crate) fn get_ftp_reader_raw(path: &str) -> Result<Box<dyn Read + Send>, One
     #[cfg(feature = "rustls")]
     super::crypto::ensure_default_provider()?;
 
-    let parts = path.split('/').collect::<Vec<&str>>();
-    let socket = match parts[2].contains(':') {
-        true => parts[2].to_string(),
-        false => format!("{}:21", parts[2]),
+    let path_without_scheme = path
+        .strip_prefix("ftp://")
+        .ok_or_else(|| OneIoError::NotSupported(path.to_string()))?;
+    let (host, remote_path) = path_without_scheme
+        .split_once('/')
+        .ok_or_else(|| OneIoError::NotSupported(path.to_string()))?;
+    let socket = match host.contains(':') {
+        true => host.to_string(),
+        false => format!("{host}:21"),
     };
-    let path = parts[3..].join("/");
 
     let mut ftp_stream = suppaftp::FtpStream::connect(socket)?;
     // use anonymous login
     ftp_stream.login("anonymous", "oneio")?;
     ftp_stream.transfer_type(suppaftp::types::FileType::Binary)?;
-    let reader = Box::new(ftp_stream.retr_as_stream(path.as_str())?);
+    let reader = Box::new(ftp_stream.retr_as_stream(remote_path)?);
     Ok(reader)
+}
+
+#[cfg(feature = "http")]
+fn build_default_http_client() -> Result<Client, reqwest::Error> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("oneio"),
+    );
+    headers.insert(
+        reqwest::header::CONTENT_LENGTH,
+        reqwest::header::HeaderValue::from_static("0"),
+    );
+    #[cfg(feature = "cli")]
+    headers.insert(
+        reqwest::header::CACHE_CONTROL,
+        reqwest::header::HeaderValue::from_static("no-cache"),
+    );
+
+    #[cfg(any(feature = "rustls", feature = "native-tls"))]
+    {
+        let accept_invalid_certs = matches!(
+            std::env::var("ONEIO_ACCEPT_INVALID_CERTS")
+                .unwrap_or_default()
+                .to_lowercase()
+                .as_str(),
+            "true" | "yes" | "y" | "1"
+        );
+        Client::builder()
+            .default_headers(headers)
+            .danger_accept_invalid_certs(accept_invalid_certs)
+            .build()
+    }
+
+    #[cfg(not(any(feature = "rustls", feature = "native-tls")))]
+    {
+        Client::builder().default_headers(headers).build()
+    }
+}
+
+#[cfg(feature = "http")]
+fn default_http_client() -> Result<Client, OneIoError> {
+    dotenvy::dotenv().ok();
+
+    #[cfg(feature = "rustls")]
+    super::crypto::ensure_default_provider()?;
+
+    match DEFAULT_HTTP_CLIENT.get_or_init(|| build_default_http_client().map_err(|e| e.to_string()))
+    {
+        Ok(client) => Ok(client.clone()),
+        Err(message) => Err(OneIoError::Network(Box::new(std::io::Error::other(
+            message.clone(),
+        )))),
+    }
 }
 
 #[cfg(feature = "http")]
@@ -35,49 +98,9 @@ pub(crate) fn get_http_reader_raw(
     path: &str,
     opt_client: Option<Client>,
 ) -> Result<reqwest::blocking::Response, OneIoError> {
-    dotenvy::dotenv().ok();
-
-    #[cfg(feature = "rustls")]
-    super::crypto::ensure_default_provider()?;
-
     let client = match opt_client {
         Some(c) => c,
-        None => {
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert(
-                reqwest::header::USER_AGENT,
-                reqwest::header::HeaderValue::from_static("oneio"),
-            );
-            headers.insert(
-                reqwest::header::CONTENT_LENGTH,
-                reqwest::header::HeaderValue::from_static("0"),
-            );
-            #[cfg(feature = "cli")]
-            headers.insert(
-                reqwest::header::CACHE_CONTROL,
-                reqwest::header::HeaderValue::from_static("no-cache"),
-            );
-
-            #[cfg(any(feature = "rustls", feature = "native-tls"))]
-            {
-                let accept_invalid_certs = matches!(
-                    std::env::var("ONEIO_ACCEPT_INVALID_CERTS")
-                        .unwrap_or_default()
-                        .to_lowercase()
-                        .as_str(),
-                    "true" | "yes" | "y" | "1"
-                );
-                Client::builder()
-                    .default_headers(headers)
-                    .danger_accept_invalid_certs(accept_invalid_certs)
-                    .build()?
-            }
-
-            #[cfg(not(any(feature = "rustls", feature = "native-tls")))]
-            {
-                Client::builder().default_headers(headers).build()?
-            }
-        }
+        None => default_http_client()?,
     };
     let res = client
         .execute(client.get(path).build()?)?
@@ -162,6 +185,23 @@ pub fn get_http_reader(
     get_compression_reader(raw_reader, file_type)
 }
 
+#[cfg(feature = "http")]
+pub(crate) fn get_http_content_length(path: &str) -> Result<u64, OneIoError> {
+    let client = default_http_client()?;
+    let response = client.head(path).send()?.error_for_status()?;
+
+    response
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .ok_or_else(|| {
+            OneIoError::NotSupported(
+                "Cannot determine file size - server doesn't provide Content-Length".to_string(),
+            )
+        })
+}
+
 /// Downloads a file from a remote location to a local path.
 ///
 /// # Arguments
@@ -198,33 +238,28 @@ pub fn download(
     opt_client: Option<Client>,
 ) -> Result<(), OneIoError> {
     match get_protocol(remote_path) {
-        None => {
-            return Err(OneIoError::NotSupported(remote_path.to_string()));
+        #[cfg(feature = "http")]
+        Some("http" | "https") => {
+            let mut writer = get_writer_raw(local_path)?;
+            let mut response = get_http_reader_raw(remote_path, opt_client)?;
+            response.copy_to(&mut writer)?;
+            Ok(())
         }
-        Some(protocol) => match protocol.as_str() {
-            #[cfg(feature = "http")]
-            "http" | "https" => {
-                let mut writer = get_writer_raw(local_path)?;
-                let mut response = get_http_reader_raw(remote_path, opt_client)?;
-                response.copy_to(&mut writer)?;
-            }
-            #[cfg(feature = "ftp")]
-            "ftp" => {
-                let mut writer = get_writer_raw(local_path)?;
-                let mut reader = get_ftp_reader_raw(remote_path)?;
-                std::io::copy(&mut reader, &mut writer)?;
-            }
-            #[cfg(feature = "s3")]
-            "s3" => {
-                let (bucket, path) = crate::oneio::s3::s3_url_parse(remote_path)?;
-                crate::oneio::s3::s3_download(bucket.as_str(), path.as_str(), local_path)?;
-            }
-            _ => {
-                return Err(OneIoError::NotSupported(remote_path.to_string()));
-            }
-        },
-    };
-    Ok(())
+        #[cfg(feature = "ftp")]
+        Some("ftp") => {
+            let mut writer = get_writer_raw(local_path)?;
+            let mut reader = get_ftp_reader_raw(remote_path)?;
+            std::io::copy(&mut reader, &mut writer)?;
+            Ok(())
+        }
+        #[cfg(feature = "s3")]
+        Some("s3" | "r2") => {
+            let (bucket, path) = crate::oneio::s3::s3_url_parse(remote_path)?;
+            crate::oneio::s3::s3_download(bucket.as_str(), path.as_str(), local_path)?;
+            Ok(())
+        }
+        Some(_) | None => Err(OneIoError::NotSupported(remote_path.to_string())),
+    }
 }
 
 /// Downloads a file from a remote path and saves it locally with retry mechanism.
@@ -291,19 +326,17 @@ pub fn download_with_retry(
 /// an `Err` variant with a `OneIoError` is returned.
 pub(crate) fn remote_file_exists(path: &str) -> Result<bool, OneIoError> {
     match get_protocol(path) {
-        Some(protocol) => match protocol.as_str() {
+        Some(protocol) => match protocol {
             "http" | "https" => {
-                #[cfg(feature = "rustls")]
-                super::crypto::ensure_default_provider()?;
-
-                let client = Client::builder()
+                let client = default_http_client()?;
+                let res = client
+                    .head(path)
                     .timeout(std::time::Duration::from_secs(2))
-                    .build()?;
-                let res = client.head(path).send()?;
+                    .send()?;
                 Ok(res.status().is_success())
             }
             #[cfg(feature = "s3")]
-            "s3" => {
+            "s3" | "r2" => {
                 let (bucket, path) = crate::oneio::s3::s3_url_parse(path)?;
                 let res = crate::oneio::s3::s3_exists(bucket.as_str(), path.as_str())?;
                 Ok(res)

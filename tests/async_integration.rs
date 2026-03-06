@@ -3,7 +3,6 @@
 
 #![cfg(feature = "async")]
 
-use oneio;
 use tokio::io::AsyncReadExt;
 
 const TEST_TEXT: &str = "OneIO test file.\nThis is a test.";
@@ -78,6 +77,23 @@ async fn async_download_http_to_file() {
             eprintln!("async_download_http_to_file skipped due to error: {e}");
         }
     }
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+#[cfg(feature = "any_gz")]
+#[tokio::test]
+async fn async_download_preserves_compressed_bytes() {
+    let tmp_path = "tests/_tmp_async_download.txt.gz";
+    let _ = std::fs::remove_file(tmp_path);
+
+    oneio::download_async("tests/test_data.txt.gz", tmp_path)
+        .await
+        .unwrap();
+
+    let original = std::fs::read("tests/test_data.txt.gz").unwrap();
+    let downloaded = std::fs::read(tmp_path).unwrap();
+    assert_eq!(downloaded, original);
 
     let _ = std::fs::remove_file(tmp_path);
 }
