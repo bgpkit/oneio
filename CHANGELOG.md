@@ -50,6 +50,9 @@ All notable changes to this project will be documented in this file.
 - Terminal detection uses `std::io::IsTerminal` from the standard library; no extra dependency needed
 - Added `indicatif` to the `cli` feature for progress bars
 
+### Bug fixes
+- LZ4 compressed writes were silently truncated: `lz4::Encoder` has no `Drop` impl and requires an explicit `finish()` call to write the end-of-stream marker. Fixed with a `Lz4Writer` wrapper that calls `finish()` on drop.
+
 ### Documentation
 - `lib.rs` docstring documents the `native-tls` feature as the fix for Cloudflare WARP and corporate proxy environments
 - `ONEIO_ACCEPT_INVALID_CERTS` and `ONEIO_CA_BUNDLE` environment variables documented at crate root

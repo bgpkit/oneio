@@ -114,7 +114,35 @@ pub(crate) mod lz4 {
     }
 
     pub(crate) fn get_writer(raw_writer: BufWriter<File>) -> Result<Box<dyn Write>, OneIoError> {
-        Ok(Box::new(lz4::EncoderBuilder::new().build(raw_writer)?))
+        let encoder = lz4::EncoderBuilder::new().build(raw_writer)?;
+        Ok(Box::new(Lz4Writer(Some(encoder))))
+    }
+
+    /// Wrapper around `lz4::Encoder` that writes the frame end marker on drop.
+    ///
+    /// `lz4::Encoder` has no `Drop` impl — `finish()` must be called explicitly
+    /// to flush the end-of-stream marker. Without it the compressed stream is
+    /// incomplete and the decoder returns 0 bytes.
+    struct Lz4Writer<W: Write>(Option<lz4::Encoder<W>>);
+
+    impl<W: Write> Write for Lz4Writer<W> {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.as_mut().unwrap().write(buf)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.0.as_mut().unwrap().flush()
+        }
+    }
+
+    impl<W: Write> Drop for Lz4Writer<W> {
+        fn drop(&mut self) {
+            if let Some(encoder) = self.0.take() {
+                let (mut w, result) = encoder.finish();
+                if result.is_ok() {
+                    let _ = w.flush();
+                }
+            }
+        }
     }
 }
 

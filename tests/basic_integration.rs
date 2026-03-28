@@ -329,3 +329,431 @@ fn test_download_with_retry_exhausts_retries_on_bad_url() {
     // Cleanup in case it somehow created a file.
     let _ = std::fs::remove_file("tests/should_not_exist.txt");
 }
+
+// ── Phase 1: LZ4 / XZ / Zstd compression ─────────────────────────────────────
+
+#[cfg(feature = "lz")]
+#[test]
+fn test_local_lz4() {
+    test_read("tests/test_data.txt.lz4");
+}
+
+#[cfg(feature = "lz")]
+#[test]
+fn test_write_lz4() {
+    test_write("tests/test_write_data.txt.lz4", "tests/test_data.txt.lz4");
+}
+
+#[cfg(feature = "lz")]
+#[test]
+fn test_get_reader_with_type_lz4_override() {
+    let oneio = oneio::OneIo::new().unwrap();
+    let result = oneio.get_reader_with_type("tests/test_data.txt.lz4", "lz4");
+    assert!(result.is_ok());
+    let mut content = String::new();
+    result.unwrap().read_to_string(&mut content).unwrap();
+    assert_eq!(content.as_str(), TEST_TEXT);
+}
+
+#[cfg(feature = "xz")]
+#[test]
+fn test_local_xz() {
+    test_read("tests/test_data.txt.xz");
+}
+
+#[cfg(feature = "xz")]
+#[test]
+fn test_write_xz() {
+    test_write("tests/test_write_data.txt.xz", "tests/test_data.txt.xz");
+}
+
+#[cfg(feature = "xz")]
+#[test]
+fn test_get_reader_with_type_xz_override() {
+    let oneio = oneio::OneIo::new().unwrap();
+    let result = oneio.get_reader_with_type("tests/test_data.txt.xz", "xz");
+    assert!(result.is_ok());
+    let mut content = String::new();
+    result.unwrap().read_to_string(&mut content).unwrap();
+    assert_eq!(content.as_str(), TEST_TEXT);
+}
+
+#[cfg(feature = "zstd")]
+#[test]
+fn test_local_zstd() {
+    test_read("tests/test_data.txt.zst");
+}
+
+#[cfg(feature = "zstd")]
+#[test]
+fn test_write_zstd() {
+    test_write("tests/test_write_data.txt.zst", "tests/test_data.txt.zst");
+}
+
+#[cfg(feature = "zstd")]
+#[test]
+fn test_get_reader_with_type_zstd_override() {
+    let oneio = oneio::OneIo::new().unwrap();
+    let result = oneio.get_reader_with_type("tests/test_data.txt.zst", "zst");
+    assert!(result.is_ok());
+    let mut content = String::new();
+    result.unwrap().read_to_string(&mut content).unwrap();
+    assert_eq!(content.as_str(), TEST_TEXT);
+}
+
+// ── Phase 1: Progress tracking ────────────────────────────────────────────────
+
+#[cfg(feature = "http")]
+#[test]
+fn test_get_reader_with_progress_fires_callback() {
+    use std::sync::{Arc, Mutex};
+
+    // get_reader_with_progress makes a HEAD request (content-length probe)
+    // followed by a GET request, so the server must handle 2 connections.
+    let (url, handle) = spawn_http_server(2);
+    let oneio = oneio::OneIo::new().unwrap();
+
+    let observed = Arc::new(Mutex::new(Vec::<(u64, u64)>::new()));
+    let observed_cb = Arc::clone(&observed);
+
+    let (mut reader, total_size) = oneio
+        .get_reader_with_progress(&url, move |bytes_read, total_bytes| {
+            observed_cb.lock().unwrap().push((bytes_read, total_bytes));
+        })
+        .unwrap();
+
+    // Drain the reader so all callbacks fire.
+    let mut content = String::new();
+    reader.read_to_string(&mut content).unwrap();
+    handle.join().unwrap();
+
+    // Content-Length is set by spawn_http_server, so total_size must be known.
+    assert_eq!(total_size, Some(TEST_TEXT.len() as u64));
+
+    let calls = observed.lock().unwrap();
+    // At least one callback must have fired.
+    assert!(!calls.is_empty(), "progress callback never fired");
+    // Final bytes_read must equal the total content length.
+    let (final_bytes, _) = *calls.last().unwrap();
+    assert_eq!(final_bytes, TEST_TEXT.len() as u64);
+    // total_bytes passed to every callback must match the content length.
+    for (_, total) in calls.iter() {
+        assert_eq!(*total, TEST_TEXT.len() as u64);
+    }
+    assert_eq!(content, TEST_TEXT);
+}
+
+#[test]
+fn test_get_reader_with_progress_local_no_total() {
+    use std::sync::{Arc, Mutex};
+
+    // Local files don't go through get_content_length HTTP path —
+    // total_bytes should be known from fs::metadata, total_size Some.
+    let oneio = oneio::OneIo::new().unwrap();
+    let observed = Arc::new(Mutex::new(0u64));
+    let observed_cb = Arc::clone(&observed);
+
+    let (mut reader, total_size) = oneio
+        .get_reader_with_progress("tests/test_data.txt", move |bytes_read, _| {
+            *observed_cb.lock().unwrap() = bytes_read;
+        })
+        .unwrap();
+
+    let mut content = String::new();
+    reader.read_to_string(&mut content).unwrap();
+
+    assert_eq!(content, TEST_TEXT);
+    // Local file size is known from metadata.
+    assert!(total_size.is_some());
+    assert_eq!(total_size.unwrap(), TEST_TEXT.len() as u64);
+    assert_eq!(*observed.lock().unwrap(), TEST_TEXT.len() as u64);
+}
+
+// ── Phase 1: Cache reader ─────────────────────────────────────────────────────
+
+#[test]
+fn test_cache_reader_creates_cache_file() {
+    let cache_dir = "tests/tmp_cache_create";
+    let cache_file = "cached.txt";
+    let cache_path = format!("{cache_dir}/{cache_file}");
+    // Clean up before test.
+    let _ = std::fs::remove_dir_all(cache_dir);
+
+    let oneio = oneio::OneIo::new().unwrap();
+    let mut reader = oneio
+        .get_cache_reader(
+            "tests/test_data.txt",
+            cache_dir,
+            Some(cache_file.to_string()),
+            false,
+        )
+        .unwrap();
+
+    let mut content = String::new();
+    reader.read_to_string(&mut content).unwrap();
+    assert_eq!(content, TEST_TEXT);
+
+    // Cache file must exist after the first read.
+    assert!(std::path::Path::new(&cache_path).exists());
+    std::fs::remove_dir_all(cache_dir).unwrap();
+}
+
+#[test]
+fn test_cache_reader_reuses_existing_cache() {
+    let cache_dir = "tests/tmp_cache_reuse";
+    let cache_file = "cached.txt";
+    let _ = std::fs::remove_dir_all(cache_dir);
+    std::fs::create_dir_all(cache_dir).unwrap();
+
+    // Pre-populate the cache with different content.
+    let cached_content = "cached content";
+    std::fs::write(format!("{cache_dir}/{cache_file}"), cached_content).unwrap();
+
+    let oneio = oneio::OneIo::new().unwrap();
+    // force_cache=false → must read from the pre-existing cache, not the source.
+    let mut reader = oneio
+        .get_cache_reader(
+            "tests/test_data.txt",
+            cache_dir,
+            Some(cache_file.to_string()),
+            false,
+        )
+        .unwrap();
+
+    let mut content = String::new();
+    reader.read_to_string(&mut content).unwrap();
+    assert_eq!(
+        content, cached_content,
+        "should have read from cache, not source"
+    );
+    std::fs::remove_dir_all(cache_dir).unwrap();
+}
+
+#[test]
+fn test_cache_reader_force_refreshes_cache() {
+    let cache_dir = "tests/tmp_cache_force";
+    let cache_file = "cached.txt";
+    let _ = std::fs::remove_dir_all(cache_dir);
+    std::fs::create_dir_all(cache_dir).unwrap();
+
+    // Pre-populate the cache with stale content.
+    std::fs::write(format!("{cache_dir}/{cache_file}"), "stale content").unwrap();
+
+    let oneio = oneio::OneIo::new().unwrap();
+    // force_cache=true → must re-fetch from source and overwrite cache.
+    let mut reader = oneio
+        .get_cache_reader(
+            "tests/test_data.txt",
+            cache_dir,
+            Some(cache_file.to_string()),
+            true,
+        )
+        .unwrap();
+
+    let mut content = String::new();
+    reader.read_to_string(&mut content).unwrap();
+    assert_eq!(content, TEST_TEXT, "should have re-fetched from source");
+
+    // Cache file on disk must also be updated.
+    let on_disk = std::fs::read_to_string(format!("{cache_dir}/{cache_file}")).unwrap();
+    assert_eq!(on_disk, TEST_TEXT);
+    std::fs::remove_dir_all(cache_dir).unwrap();
+}
+
+#[test]
+fn test_cache_reader_creates_missing_cache_dir() {
+    // The cache directory must not exist before the call.
+    let cache_dir = "tests/tmp_cache_dir_creation/nested/path";
+    let _ = std::fs::remove_dir_all("tests/tmp_cache_dir_creation");
+
+    let oneio = oneio::OneIo::new().unwrap();
+    let result = oneio.get_cache_reader("tests/test_data.txt", cache_dir, None, false);
+    assert!(result.is_ok(), "should create nested cache directory");
+    std::fs::remove_dir_all("tests/tmp_cache_dir_creation").unwrap();
+}
+
+// ── Phase 1: JSON parsing ─────────────────────────────────────────────────────
+
+#[cfg(feature = "json")]
+#[test]
+fn test_read_json_struct_local() {
+    use serde::Deserialize;
+
+    #[derive(Deserialize, PartialEq, Debug)]
+    struct TestData {
+        name: String,
+        value: u32,
+        enabled: bool,
+        items: Vec<String>,
+    }
+
+    let result = oneio::read_json_struct::<TestData>("tests/test_data.json");
+    assert!(
+        result.is_ok(),
+        "read_json_struct failed: {:?}",
+        result.err()
+    );
+    let data = result.unwrap();
+    assert_eq!(data.name, "oneio_test");
+    assert_eq!(data.value, 42);
+    assert!(data.enabled);
+    assert_eq!(data.items, vec!["alpha", "beta", "gamma"]);
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn test_read_json_struct_invalid_returns_error() {
+    // A plain text file is not valid JSON — must return an error, not panic.
+    let result = oneio::read_json_struct::<serde_json::Value>("tests/test_data.txt");
+    assert!(result.is_err());
+}
+
+// ── Phase 1: Content length ───────────────────────────────────────────────────
+
+#[test]
+fn test_get_content_length_local_file() {
+    let oneio = oneio::OneIo::new().unwrap();
+    let result = oneio.get_content_length("tests/test_data.txt");
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), TEST_TEXT.len() as u64);
+}
+
+#[cfg(feature = "http")]
+#[test]
+fn test_get_content_length_http_with_content_length_header() {
+    let (url, handle) = spawn_http_server(1);
+    let oneio = oneio::OneIo::new().unwrap();
+    // spawn_http_server sends Content-Length, so we must get it back.
+    let result = oneio.get_content_length(&url);
+    handle.join().unwrap();
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), TEST_TEXT.len() as u64);
+}
+
+// ── Phase 2: get_writer_raw ───────────────────────────────────────────────────
+
+#[test]
+fn test_get_writer_raw_creates_uncompressed_file() {
+    let path = "tests/tmp_writer_raw.txt";
+    let oneio = oneio::OneIo::new().unwrap();
+
+    {
+        let mut writer = oneio.get_writer_raw(path).unwrap();
+        writer.write_all(TEST_TEXT.as_bytes()).unwrap();
+    }
+
+    // File must be readable as plain text (no compression wrapper).
+    let content = std::fs::read_to_string(path).unwrap();
+    assert_eq!(content, TEST_TEXT);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn test_get_writer_raw_creates_parent_dirs() {
+    let path = "tests/tmp_writer_raw_nested/subdir/out.txt";
+    let _ = std::fs::remove_dir_all("tests/tmp_writer_raw_nested");
+
+    let oneio = oneio::OneIo::new().unwrap();
+    let result = oneio.get_writer_raw(path);
+    assert!(result.is_ok(), "get_writer_raw should create parent dirs");
+    std::fs::remove_dir_all("tests/tmp_writer_raw_nested").unwrap();
+}
+
+// ── Phase 2: SHA256 digest ────────────────────────────────────────────────────
+
+#[cfg(feature = "digest")]
+#[test]
+fn test_get_sha256_digest_known_file() {
+    // Known SHA256 of tests/test_data.txt (pre-computed with sha256sum).
+    const EXPECTED: &str = "51a6f9bf51d9e6243fe838242bb74e6e16f77c87cae138b9f3e065c173fc63c7";
+    let result = oneio::get_sha256_digest("tests/test_data.txt");
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), EXPECTED);
+}
+
+#[cfg(feature = "digest")]
+#[test]
+fn test_get_sha256_digest_missing_file_returns_error() {
+    let result = oneio::get_sha256_digest("tests/does_not_exist.txt");
+    assert!(result.is_err());
+}
+
+// ── Phase 2: Error variants ───────────────────────────────────────────────────
+
+#[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
+#[test]
+fn test_invalid_certificate_error_variant() {
+    let result = oneio::OneIo::builder().add_root_certificate_pem(b"not a cert");
+    assert!(result.is_err());
+    assert!(
+        matches!(
+            result.err().unwrap(),
+            oneio::OneIoError::InvalidCertificate(_)
+        ),
+        "expected InvalidCertificate variant"
+    );
+}
+
+#[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
+#[test]
+fn test_invalid_certificate_der_error_variant() {
+    let result = oneio::OneIo::builder().add_root_certificate_der(b"not a der cert");
+    assert!(result.is_err());
+    assert!(
+        matches!(
+            result.err().unwrap(),
+            oneio::OneIoError::InvalidCertificate(_)
+        ),
+        "expected InvalidCertificate variant"
+    );
+}
+
+#[cfg(feature = "http")]
+#[test]
+fn test_network_error_on_refused_connection() {
+    // Port 1 is reserved and always refuses connections — produces a network error.
+    let oneio = oneio::OneIo::new().unwrap();
+    let result = oneio.get_reader("http://127.0.0.1:1/file.txt");
+    assert!(result.is_err());
+    // Error display must be non-empty and useful.
+    assert!(!result.err().unwrap().to_string().is_empty());
+}
+
+// ── Phase 2: Environment variables ───────────────────────────────────────────
+
+#[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
+#[test]
+fn test_oneio_ca_bundle_env_var_valid_path() {
+    // Point ONEIO_CA_BUNDLE at a known PEM cert — builder must succeed.
+    std::env::set_var("ONEIO_CA_BUNDLE", "tests/test-cert.pem");
+    let result = oneio::OneIo::builder().build();
+    std::env::remove_var("ONEIO_CA_BUNDLE");
+    assert!(
+        result.is_ok(),
+        "builder failed with valid ONEIO_CA_BUNDLE: {:?}",
+        result.err()
+    );
+}
+
+#[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
+#[test]
+fn test_oneio_ca_bundle_env_var_missing_path() {
+    // A non-existent path must be silently ignored (not panic or error).
+    std::env::set_var("ONEIO_CA_BUNDLE", "/tmp/oneio_does_not_exist_ca.pem");
+    let result = oneio::OneIo::builder().build();
+    std::env::remove_var("ONEIO_CA_BUNDLE");
+    assert!(
+        result.is_ok(),
+        "builder should ignore missing ONEIO_CA_BUNDLE"
+    );
+}
+
+#[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
+#[test]
+fn test_oneio_accept_invalid_certs_env_var() {
+    // Builder must succeed when env var is set to "true".
+    std::env::set_var("ONEIO_ACCEPT_INVALID_CERTS", "true");
+    let result = oneio::OneIo::builder().build();
+    std::env::remove_var("ONEIO_ACCEPT_INVALID_CERTS");
+    assert!(result.is_ok());
+}
