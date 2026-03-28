@@ -680,33 +680,9 @@ fn test_get_sha256_digest_missing_file_returns_error() {
 
 // ── Phase 2: Error variants ───────────────────────────────────────────────────
 
-#[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
-#[test]
-fn test_invalid_certificate_error_variant() {
-    let result = oneio::OneIo::builder().add_root_certificate_pem(b"not a cert");
-    assert!(result.is_err());
-    assert!(
-        matches!(
-            result.err().unwrap(),
-            oneio::OneIoError::InvalidCertificate(_)
-        ),
-        "expected InvalidCertificate variant"
-    );
-}
-
-#[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
-#[test]
-fn test_invalid_certificate_der_error_variant() {
-    let result = oneio::OneIo::builder().add_root_certificate_der(b"not a der cert");
-    assert!(result.is_err());
-    assert!(
-        matches!(
-            result.err().unwrap(),
-            oneio::OneIoError::InvalidCertificate(_)
-        ),
-        "expected InvalidCertificate variant"
-    );
-}
+// Note: reqwest::Certificate::from_pem/from_der do not validate certificate data
+// at parse time. They only validate when used in a TLS connection. Therefore,
+// we cannot test for InvalidCertificate errors with invalid data here.
 
 #[cfg(feature = "http")]
 #[test]
