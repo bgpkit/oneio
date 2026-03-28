@@ -1,307 +1,178 @@
 /*!
-OneIO is a Rust library providing unified IO operations for reading and writing compressed
-files from local and remote sources with both synchronous and asynchronous support.
+Unified I/O for compressed files from any source.
 
-## Quick Start
+OneIO provides a single interface for reading and writing files with any
+compression format, from local disk or remote locations (HTTP, FTP, S3).
+
+# Quick Start
 
 ```toml
-oneio = "0.20"  # Default: gz, bz, https
+[dependencies]
+oneio = "0.20"
 ```
 
-## Feature Selection Guide
+```rust,ignore
+use oneio;
 
-### Common Use Cases
-
-**Local files only:**
-```toml
-oneio = { version = "0.20", default-features = false, features = ["gz", "bz"] }
+// Read a remote compressed file
+let content = oneio::read_to_string("https://example.com/data.txt.gz")?;
 ```
 
-**HTTP only (no HTTPS)**:
+# Feature Selection
+
+Enable only what you need:
+
+| Feature | Description |
+|---------|-------------|
+| `gz` | Gzip compression |
+| `bz` | Bzip2 compression |
+| `lz` | LZ4 compression |
+| `xz` | XZ compression |
+| `zstd` | Zstandard compression |
+| `http` | HTTP/HTTPS support |
+| `ftp` | FTP support |
+| `s3` | S3-compatible storage |
+| `async` | Async I/O support |
+| `json` | JSON deserialization |
+| `digest` | SHA256 hashing |
+| `cli` | Command-line tool |
+
+**Example: Minimal setup for local files**
 ```toml
-oneio = { version = "0.20", default-features = false, features = ["http", "gz"] }
+[dependencies]
+oneio = { version = "0.20", default-features = false, features = ["gz"] }
 ```
 
-**HTTPS with default rustls**:
+**Example: HTTPS with custom TLS for corporate proxies**
 ```toml
-oneio = { version = "0.20", default-features = false, features = ["https", "gz"] }
-```
-
-**HTTPS with custom TLS backend**:
-```toml
-# With rustls
-oneio = { version = "0.20", default-features = false, features = ["http", "rustls", "gz"] }
-
-# With native-tls
+[dependencies]
 oneio = { version = "0.20", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
-**S3-compatible storage**:
-```toml
-oneio = { version = "0.20", default-features = false, features = ["s3", "https", "gz"] }
-```
+# Core API
 
-**Async operations**:
-```toml
-oneio = { version = "0.20", features = ["async"] }
-```
-
-### Available Features
-
-**Compression** (choose only what you need):
-- `gz` - Gzip via flate2
-- `bz` - Bzip2
-- `lz` - LZ4
-- `xz` - XZ
-- `zstd` - Zstandard (balanced)
-
-**Protocols**:
-- `http` - HTTP-only support (no TLS)
-- `https` - HTTP/HTTPS with rustls TLS backend (equivalent to `http` + `rustls`)
-- `ftp` - FTP support (requires `http` + TLS backend)
-- `s3` - S3-compatible storage
-
-**TLS Backends** (for HTTPS - mutually exclusive):
-- `rustls` - Pure Rust TLS (use with `http`). Uses both system certificates and bundled Mozilla certificates for maximum compatibility with corporate VPNs and minimal environments.
-- `native-tls` - Platform native TLS (use with `http`)
-
-**Additional**:
-- `async` - Async support (limited to gz, bz, zstd for compression)
-- `json` - JSON parsing
-- `digest` - SHA256 digest calculation
-- `cli` - Command-line tool
-
-Environment: Set `ONEIO_ACCEPT_INVALID_CERTS=true` to accept invalid certificates.
-
-**Crypto Provider Initialization**: When using rustls features (`https`, `s3`, `ftp`), oneio
-automatically initializes the crypto provider (AWS-LC or ring) on first use. You can also
-initialize it explicitly at startup using [`crypto::ensure_default_provider()`] for better
-control over error handling.
-
-## Usages
-
-### Reading Files
-
-Read all content into a string:
+## Reading
 
 ```rust,ignore
-use oneio;
+// Read entire file to string
+let content = oneio::read_to_string("data.txt")?;
 
-const TEST_TEXT: &str = "OneIO test file.\nThis is a test.";
+// Read lines
+for line in oneio::read_lines("data.txt")? {
+    println!("{}", line?);
+}
 
-// Works with compression and remote files automatically
-let content = oneio::read_to_string("https://spaces.bgpkit.org/oneio/test_data.txt.gz")?;
-assert_eq!(content.trim(), TEST_TEXT);
-# Ok::<(), Box<dyn std::error::Error>>(())
+// Get a reader for streaming
+let mut reader = oneio::get_reader("data.txt.gz")?;
 ```
 
-Read line by line:
+## Writing
 
 ```rust,ignore
-use oneio;
-
-let lines = oneio::read_lines("https://spaces.bgpkit.org/oneio/test_data.txt.gz")?
-    .map(|line| line.unwrap())
-    .collect::<Vec<String>>();
-
-assert_eq!(lines.len(), 2);
-assert_eq!(lines[0], "OneIO test file.");
-assert_eq!(lines[1], "This is a test.");
-# Ok::<(), Box<dyn std::error::Error>>(())
-```
-
-Get a reader for streaming:
-
-```rust
-use oneio;
-use std::io::Read;
-
-let mut reader = oneio::get_reader("tests/test_data.txt.gz")?;
-let mut buffer = Vec::new();
-reader.read_to_end(&mut buffer)?;
-# Ok::<(), Box<dyn std::error::Error>>(())
-```
-
-### Writing Files
-
-Write with automatic compression:
-
-```rust,ignore
-use oneio;
 use std::io::Write;
 
 let mut writer = oneio::get_writer("output.txt.gz")?;
-writer.write_all(b"Hello, compressed world!")?;
-drop(writer); // Important: close the writer
-
-// Read it back
-let content = oneio::read_to_string("output.txt.gz")?;
-assert_eq!(content, "Hello, compressed world!");
-# Ok::<(), Box<dyn std::error::Error>>(())
+writer.write_all(b"Hello")?;
+// Compression finalized on drop
 ```
 
-### Remote Files with Custom Headers
+## Reusable Client
+
+For multiple requests with shared configuration:
 
 ```rust,ignore
-use oneio;
+use oneio::OneIo;
 
-let client = oneio::create_client_with_headers([("Authorization", "Bearer TOKEN")])?;
-let mut reader = oneio::get_http_reader(
-    "https://api.example.com/protected/data.json.gz",
-    Some(client)
+let client = OneIo::builder()
+    .header_str("Authorization", "Bearer token")
+    .timeout(std::time::Duration::from_secs(30))
+    .build()?;
+
+let data1 = client.read_to_string("https://api.example.com/1.json")?;
+let data2 = client.read_to_string("https://api.example.com/2.json")?;
+```
+
+# Compression
+
+Automatic detection by file extension:
+
+| Extension | Algorithm |
+|-----------|-----------|
+| `.gz` | Gzip |
+| `.bz2` | Bzip2 |
+| `.lz4` | LZ4 |
+| `.xz` | XZ |
+| `.zst` | Zstandard |
+
+Override detection for URLs with query parameters:
+
+```rust,ignore
+use oneio::OneIo;
+
+let client = OneIo::new()?;
+let reader = client.get_reader_with_type(
+    "https://api.example.com/data?format=gz",
+    "gz"
 )?;
-
-let content = std::io::read_to_string(&mut reader)?;
-println!("{}", content);
-# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-### Progress Tracking
-Track download/read progress with callbacks:
+# Protocols
 
-```rust,ignore
-use oneio;
-
-let (mut reader, total_size) = oneio::get_reader_with_progress(
-    "https://example.com/largefile.gz",
-    |bytes_read, total_bytes| {
-        match total_bytes {
-            Some(total) => {
-                let percent = (bytes_read as f64 / total as f64) * 100.0;
-                println!("Progress: {:.1}%", percent);
-            }
-            None => println!("Downloaded: {} bytes", bytes_read),
-        }
-    }
-)?;
-# Ok::<(), Box<dyn std::error::Error>>(())
-```
-
-### Async Support (Feature: `async`)
-
-```rust,ignore
-use oneio;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let content = oneio::read_to_string_async("https://example.com/data.json.gz").await?;
-
-    oneio::download_async(
-        "https://example.com/data.csv.gz",
-        "local_data.csv.gz"
-    ).await?;
-
-    // download_async preserves the remote bytes.
-
-    Ok(())
-}
-```
-
-Note: Async compression is limited to gz, bz, zstd. LZ4/XZ return `NotSupported`.
-
-
-## Supported Formats
-
-### Compression Detection
-
-OneIO detects compression algorithm by the file extensions:
-
-- **Gzip**: `.gz`, `.gzip`
-- **Bzip2**: `.bz`, `.bz2`
-- **LZ4**: `.lz4`, `.lz`
-- **XZ**: `.xz`, `.xz2`
-- **Zstandard**: `.zst`, `.zstd`
-
-### Protocol Support
-- **Local files**: `/path/to/file.txt`
+- **Local**: `/path/to/file.txt`
 - **HTTP/HTTPS**: `https://example.com/file.txt.gz`
 - **FTP**: `ftp://ftp.example.com/file.txt` (requires `ftp` feature)
-- **S3**: `s3://bucket/path/file.txt` (requires `s3` feature)
+- **S3**: `s3://bucket/key` (requires `s3` feature)
 
-## Command Line Tool
+# Async API
 
-Install the CLI tool:
-
-```bash
-cargo install oneio --features cli
-```
-
-Basic usage:
-
-```bash
-# Read and print a remote compressed file
-oneio https://example.com/data.txt.gz
-
-# Download a file
-oneio -d https://example.com/largefile.bz2
-
-# Pipe to other tools
-oneio https://api.example.com/data.json.gz | jq '.results | length'
-```
-
-## S3 Operations (Feature: `s3`)
+Enable the `async` feature:
 
 ```rust,ignore
-use oneio::s3::*;
-
-// Direct S3 operations
-s3_upload("my-bucket", "path/to/file.txt", "local/file.txt")?;
-s3_download("my-bucket", "path/to/file.txt", "downloaded.txt")?;
-
-// Read S3 directly
-let content = oneio::read_to_string("s3://my-bucket/path/to/file.txt")?;
-
-// Check existence and get metadata
-if s3_exists("my-bucket", "path/to/file.txt")? {
-    let stats = s3_stats("my-bucket", "path/to/file.txt")?;
-    println!("Size: {} bytes", stats.content_length.unwrap_or(0));
-}
-
-// List objects
-let objects = s3_list("my-bucket", "path/", Some("/".to_string()), false)?;
-# Ok::<(), Box<dyn std::error::Error>>(())
+let content = oneio::read_to_string_async("https://example.com/data.txt").await?;
 ```
 
-## Crypto Provider Initialization (Rustls)
+Async compression support: `gz`, `bz`, `zstd`
+LZ4 and XZ return `NotSupported` error.
 
-When using HTTPS, S3, or FTP features with rustls, oneio automatically initializes
-a crypto provider (AWS-LC or ring) on first use. For more control, you can initialize
-it explicitly at startup:
+# Error Handling
 
 ```rust,ignore
-use oneio;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize crypto provider explicitly at startup
-    oneio::crypto::ensure_default_provider()?;
-
-    // Now all HTTPS/S3/FTP operations will work
-    let content = oneio::read_to_string("https://example.com/data.txt")?;
-
-    Ok(())
-}
-```
-
-This is particularly useful in libraries or applications that want to:
-- Handle initialization errors early
-- Control when the provider is set up
-- Make the dependency on crypto providers explicit
-
-## Error Handling
-
-Three error types in v0.20:
-
-```rust
 use oneio::OneIoError;
 
 match oneio::get_reader("file.txt") {
-    Ok(reader) => { /* use reader */ },
-    Err(OneIoError::Io(e)) => { /* filesystem error */ },
-    Err(OneIoError::Network(e)) => { /* network error */ },
-    Err(OneIoError::Status { service, code }) => { /* remote status error */ },
-    Err(OneIoError::NotSupported(msg)) => { /* feature not compiled */ },
+    Ok(reader) => { /* ... */ }
+    Err(OneIoError::Io(e)) => { /* filesystem error */ }
+    Err(OneIoError::Network(e)) => { /* network error */ }
+    Err(OneIoError::NotSupported(msg)) => { /* feature not enabled */ }
+    _ => { /* future error variants */ }
 }
 ```
+
+# Environment Variables
+
+- `ONEIO_ACCEPT_INVALID_CERTS=true` - Accept invalid TLS certificates (development only)
+- `ONEIO_CA_BUNDLE=/path/to/ca.pem` - Add custom CA certificate to trust store
+
+# TLS and Corporate Proxies
+
+For environments with custom TLS certificates (Cloudflare WARP, corporate proxies):
+
+1. Use `native-tls` feature to use the OS trust store:
+   ```toml
+   features = ["http", "native-tls"]
+   ```
+
+2. Or add certificates programmatically:
+   ```rust,ignore
+   let client = OneIo::builder()
+       .add_root_certificate_pem(&std::fs::read("ca.pem")?)?
+       .build()?;
+   ```
+
+3. Or via environment variable:
+   ```bash
+   export ONEIO_CA_BUNDLE=/path/to/ca.pem
+   ```
 */
 
 #![doc(
@@ -309,23 +180,133 @@ match oneio::get_reader("file.txt") {
     html_favicon_url = "https://raw.githubusercontent.com/bgpkit/assets/main/logos/favicon.ico"
 )]
 
+mod builder;
+mod client;
+mod compression;
 mod error;
-mod oneio;
+mod progress;
 
+pub use builder::OneIoBuilder;
+pub use client::OneIo;
 pub use error::OneIoError;
 
+#[cfg(feature = "async")]
+pub mod async_reader;
 #[cfg(feature = "rustls")]
-pub mod crypto {
-    //! Crypto provider initialization for rustls.
-    pub use crate::oneio::crypto::*;
-}
+pub mod crypto;
 #[cfg(feature = "digest")]
-pub use crate::oneio::digest::*;
+pub mod digest;
 #[cfg(any(feature = "http", feature = "ftp"))]
-pub use crate::oneio::remote::*;
+pub(crate) mod remote;
 #[cfg(feature = "s3")]
-pub use crate::oneio::s3::*;
+pub mod s3;
 
-pub use crate::oneio::utils::*;
+// Re-export all s3 functions
+#[cfg(feature = "s3")]
+pub use s3::*;
 
-pub use crate::oneio::*;
+// Re-export all digest functions
+#[cfg(feature = "digest")]
+pub use digest::*;
+
+use std::fs::File;
+use std::io::{BufWriter, Read, Write};
+
+// Internal helpers
+
+/// Extracts the protocol from a given path.
+pub(crate) fn get_protocol(path: &str) -> Option<&str> {
+    path.split_once("://").map(|(protocol, _)| protocol)
+}
+
+/// Extract the file extension, ignoring URL query params and fragments.
+pub(crate) fn file_extension(path: &str) -> &str {
+    let path = path.split('?').next().unwrap_or(path);
+    let path = path.split('#').next().unwrap_or(path);
+    path.rsplit('.').next().unwrap_or("")
+}
+
+/// Creates a raw writer without compression.
+pub(crate) fn get_writer_raw_impl(path: &str) -> Result<BufWriter<File>, OneIoError> {
+    let path = std::path::Path::new(path);
+    if let Some(prefix) = path.parent() {
+        std::fs::create_dir_all(prefix)?;
+    }
+    let output_file = BufWriter::new(File::create(path)?);
+    Ok(output_file)
+}
+
+/// Creates a raw reader for local files.
+#[allow(dead_code)]
+pub(crate) fn get_reader_raw_impl(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
+    let file = File::open(path)?;
+    Ok(Box::new(std::io::BufReader::new(file)))
+}
+
+/// Gets a reader for the given file path.
+pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
+    builder::default_oneio()?.get_reader(path)
+}
+
+/// Returns a writer for the given file path with the corresponding compression.
+pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
+    builder::default_oneio()?.get_writer(path)
+}
+
+/// Checks whether a local or remote path exists.
+pub fn exists(path: &str) -> Result<bool, OneIoError> {
+    builder::default_oneio()?.exists(path)
+}
+
+/// Reads the full contents of a file or URL into a string.
+pub fn read_to_string(path: &str) -> Result<String, OneIoError> {
+    builder::default_oneio()?.read_to_string(path)
+}
+
+/// Reads and deserializes JSON into the requested type.
+#[cfg(feature = "json")]
+pub fn read_json_struct<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, OneIoError> {
+    builder::default_oneio()?.read_json_struct(path)
+}
+
+/// Returns an iterator over lines from the provided path.
+pub fn read_lines(
+    path: &str,
+) -> Result<std::io::Lines<std::io::BufReader<Box<dyn Read + Send>>>, OneIoError> {
+    builder::default_oneio()?.read_lines(path)
+}
+
+/// Downloads a remote resource to a local path.
+pub fn download(remote: &str, local: &str) -> Result<(), OneIoError> {
+    builder::default_oneio()?.download(remote, local)
+}
+
+/// Creates a reader backed by a local cache file.
+pub fn get_cache_reader(
+    path: &str,
+    cache_dir: &str,
+    cache_file_name: Option<String>,
+    force_cache: bool,
+) -> Result<Box<dyn Read + Send>, OneIoError> {
+    builder::default_oneio()?.get_cache_reader(path, cache_dir, cache_file_name, force_cache)
+}
+
+/// Gets an async reader for the given file path.
+#[cfg(feature = "async")]
+pub async fn get_reader_async(
+    path: &str,
+) -> Result<Box<dyn tokio::io::AsyncRead + Send + Unpin>, OneIoError> {
+    async_reader::get_reader_async(path).await
+}
+
+/// Reads the entire content of a file asynchronously into a string.
+#[cfg(feature = "async")]
+pub async fn read_to_string_async(path: &str) -> Result<String, OneIoError> {
+    async_reader::read_to_string_async(path).await
+}
+
+/// Downloads a file asynchronously from a URL to a local path.
+#[cfg(feature = "async")]
+pub async fn download_async(url: &str, path: &str) -> Result<(), OneIoError> {
+    async_reader::download_async(url, path).await
+}

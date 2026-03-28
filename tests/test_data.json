@@ -1,0 +1,6 @@
+{
+  "name": "oneio_test",
+  "value": 42,
+  "enabled": true,
+  "items": ["alpha", "beta", "gamma"]
+}

@@ -40,7 +40,7 @@ fn download_large_file() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get reader with progress tracking
     let (mut reader, _total_size) =
-        oneio::get_reader_with_progress(url, move |bytes_read, total_bytes| {
+        oneio::OneIo::new()?.get_reader_with_progress(url, move |bytes_read, total_bytes| {
             // Show and set length when we know the total size
             if total_bytes > 0 {
                 if pb_clone.is_hidden() {
