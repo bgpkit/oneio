@@ -41,6 +41,15 @@ All notable changes to this project will be documented in this file.
 - Added a benchmark helper script for comparing gzip backend feature flags and bz2 decompression
 - Added reusable `OneIo` and `OneIoBuilder` APIs for sharing headers and TLS certificate configuration across requests
 
+### CLI
+- Added `-H`/`--header` flag for custom HTTP headers (`"Name: Value"` or `"Name:Value"`), can be repeated
+- Added `--compression` flag to override compression detection (gz, bz2, lz4, xz, zst); no effect with `--download`
+- Added progress bar for `--download` and `s3 download`, shown when stderr is a terminal; uses spinner when file size is unknown
+- Added `s3 download <BUCKET> <S3_PATH> [--outfile]` subcommand
+- Fixed S3 upload syntax: `oneio s3 upload <LOCAL_FILE> <BUCKET> <S3_PATH>` (local file is now the first positional arg under the subcommand)
+- Terminal detection uses `std::io::IsTerminal` from the standard library; no extra dependency needed
+- Added `indicatif` to the `cli` feature for progress bars
+
 ### Documentation
 - `lib.rs` docstring documents the `native-tls` feature as the fix for Cloudflare WARP and corporate proxy environments
 - `ONEIO_ACCEPT_INVALID_CERTS` and `ONEIO_CA_BUNDLE` environment variables documented at crate root
