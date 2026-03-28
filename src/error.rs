@@ -1,7 +1,8 @@
 use thiserror::Error;
 
-/// Simplified error enum with only 3 variants
+/// Error type for OneIO operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum OneIoError {
     /// All IO-related errors (file system, EOF, etc.)
     #[error("IO error: {0}")]
@@ -11,9 +12,24 @@ pub enum OneIoError {
     #[error("{0}")]
     Network(Box<dyn std::error::Error + Send + Sync>),
 
+    /// Network error with URL context for debugging
+    #[error("{url}: {source}")]
+    NetworkWithContext {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        url: String,
+    },
+
     /// Structured status errors from remote services
     #[error("{service} status error: {code}")]
     Status { service: &'static str, code: u16 },
+
+    /// Invalid header name or value
+    #[error("Invalid header: {0}")]
+    InvalidHeader(String),
+
+    /// Invalid certificate data
+    #[error("Invalid certificate: {0}")]
+    InvalidCertificate(String),
 
     /// Feature not supported/compiled
     #[error("Not supported: {0}")]

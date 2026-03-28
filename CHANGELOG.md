@@ -4,16 +4,46 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking changes
+- `OneIoError` is now `#[non_exhaustive]`; `match` expressions without a wildcard `_` arm will fail to compile
+- `OneIoBuilder::header()` now accepts typed `HeaderName`/`HeaderValue` (infallible) instead of `(K, V) -> Result<Self>`
+- `OneIoBuilder::user_agent()` now accepts a typed `HeaderValue` (infallible) instead of `V -> Result<Self>`
+- `oneio::download()` no longer accepts an `Option<reqwest::blocking::Client>` parameter
+- `oneio::remote` module is now `pub(crate)`; `create_client_with_headers` is deprecated (use `OneIo::builder().header_str()`)
+- `ProgressReader` and `ProgressCallback` are no longer part of the public API
+
 ### Changed
+- Flattened module layout: `src/oneio/` sub-directory removed; all modules are now at `src/` level
+- `OneIo` and `OneIoBuilder` are now the primary API surface; free-standing functions delegate to a shared default client
+- Compression detection strips URL query parameters and fragments before reading the file extension
+- `download_with_retry()` uses exponential backoff between retry attempts (100ms × 2^attempt, capped at 6400ms)
 - Stream cache writes to disk via `std::io::copy` instead of buffering the full payload in memory
 - `download_async()` now preserves raw bytes, matching `download()`
 - Default blocking HTTP clients are reused across reads and content-length probes
+- Stateless read and download helpers now delegate to a reusable `OneIo` client internally
 - S3 status failures now use structured errors instead of string parsing
 - S3 readers now stream data through a bounded channel instead of materializing the full object in memory
 
 ### Added
+- `OneIoBuilder::header_str(name, value)` — string convenience for adding headers (panics on invalid input, matching reqwest convention)
+- `OneIoBuilder::configure_http(f)` — escape hatch for setting any `reqwest::blocking::ClientBuilder` option
+- `OneIoBuilder::timeout()`, `connect_timeout()` — request and connect timeouts
+- `OneIoBuilder::proxy()`, `no_proxy()` — proxy configuration
+- `OneIoBuilder::redirect()` — redirect policy
+- `OneIoBuilder::add_root_certificate_pem()`, `add_root_certificate_der()` — load CA certs from raw bytes
+- `OneIo::get_reader_with_type(path, compression)` — explicit compression override, useful for URLs with query parameters
+- `OneIo::from_client(client)` — construct a `OneIo` from an existing `reqwest::blocking::Client`
+- `OneIoError::NetworkWithContext` — network errors now carry the URL that failed
+- `OneIoError::InvalidHeader`, `OneIoError::InvalidCertificate` — specific error variants for header and certificate construction failures
+- `ONEIO_CA_BUNDLE` environment variable — path to a PEM file added to the HTTP trust store on startup
+- `get_cache_reader()` free-standing shortcut kept at crate root for convenience
 - Added `bzip2_decompress` benchmark coverage
 - Added a benchmark helper script for comparing gzip backend feature flags and bz2 decompression
+- Added reusable `OneIo` and `OneIoBuilder` APIs for sharing headers and TLS certificate configuration across requests
+
+### Documentation
+- `lib.rs` docstring documents the `native-tls` feature as the fix for Cloudflare WARP and corporate proxy environments
+- `ONEIO_ACCEPT_INVALID_CERTS` and `ONEIO_CA_BUNDLE` environment variables documented at crate root
 
 ## v0.20.1 -- 2025-12-18
 

@@ -169,7 +169,7 @@ fn main() {
             Some(p) => p.to_str().unwrap().to_string(),
         };
 
-        match oneio::download(path, out_path.as_str(), None) {
+        match oneio::download(path, out_path.as_str()) {
             Ok(_) => {
                 println!("file successfully downloaded to {}", out_path.as_str());
             }
