@@ -1,72 +1,178 @@
 /*!
-OneIO is a Rust library providing unified IO operations for reading and writing compressed
-files from local and remote sources with both synchronous and asynchronous support.
+Unified I/O for compressed files from any source.
 
-## Quick Start
+OneIO provides a single interface for reading and writing files with any
+compression format, from local disk or remote locations (HTTP, FTP, S3).
 
-```toml
-oneio = "0.20"  # Default: gz, bz, https
-```
-
-## Feature Selection Guide
-
-### Common Use Cases
-
-**Local files only:**
-```toml
-oneio = { version = "0.20", default-features = false, features = ["gz", "bz"] }
-```
-
-**HTTPS with default rustls**:
-```toml
-oneio = { version = "0.20", default-features = false, features = ["https", "gz"] }
-```
-
-**HTTPS with custom TLS backend**:
-```toml
-# With native-tls (for WARP/corporate proxies)
-oneio = { version = "0.20", default-features = false, features = ["http", "native-tls", "gz"] }
-```
-
-### Working with Corporate Proxies (Cloudflare WARP, etc.)
-
-If you're behind a corporate proxy or VPN like Cloudflare WARP that uses custom TLS certificates:
+# Quick Start
 
 ```toml
-oneio = { version = "0.20", default-features = false, features = ["http", "native-tls", "gz"] }
+[dependencies]
+oneio = "0.20"
 ```
-
-The `native-tls` feature uses your operating system's TLS stack with its trust store, which
-includes custom corporate certificates. This works for both HTTP/HTTPS and S3 operations.
-
-## Examples
-
-### Reading Files
 
 ```rust,ignore
+use oneio;
+
+// Read a remote compressed file
 let content = oneio::read_to_string("https://example.com/data.txt.gz")?;
 ```
 
-### Reusable OneIo Clients
+# Feature Selection
+
+Enable only what you need:
+
+| Feature | Description |
+|---------|-------------|
+| `gz` | Gzip compression |
+| `bz` | Bzip2 compression |
+| `lz` | LZ4 compression |
+| `xz` | XZ compression |
+| `zstd` | Zstandard compression |
+| `http` | HTTP/HTTPS support |
+| `ftp` | FTP support |
+| `s3` | S3-compatible storage |
+| `async` | Async I/O support |
+| `json` | JSON deserialization |
+| `digest` | SHA256 hashing |
+| `cli` | Command-line tool |
+
+**Example: Minimal setup for local files**
+```toml
+[dependencies]
+oneio = { version = "0.20", default-features = false, features = ["gz"] }
+```
+
+**Example: HTTPS with custom TLS for corporate proxies**
+```toml
+[dependencies]
+oneio = { version = "0.20", default-features = false, features = ["http", "native-tls", "gz"] }
+```
+
+# Core API
+
+## Reading
 
 ```rust,ignore
-let oneio = oneio::OneIo::builder()
-    .header_str("Authorization", "Bearer TOKEN")
+// Read entire file to string
+let content = oneio::read_to_string("data.txt")?;
+
+// Read lines
+for line in oneio::read_lines("data.txt")? {
+    println!("{}", line?);
+}
+
+// Get a reader for streaming
+let mut reader = oneio::get_reader("data.txt.gz")?;
+```
+
+## Writing
+
+```rust,ignore
+use std::io::Write;
+
+let mut writer = oneio::get_writer("output.txt.gz")?;
+writer.write_all(b"Hello")?;
+// Compression finalized on drop
+```
+
+## Reusable Client
+
+For multiple requests with shared configuration:
+
+```rust,ignore
+use oneio::OneIo;
+
+let client = OneIo::builder()
+    .header_str("Authorization", "Bearer token")
+    .timeout(std::time::Duration::from_secs(30))
     .build()?;
 
-let content = oneio.read_to_string("https://api.example.com/data.json.gz")?;
+let data1 = client.read_to_string("https://api.example.com/1.json")?;
+let data2 = client.read_to_string("https://api.example.com/2.json")?;
 ```
 
-### Async Support
+# Compression
+
+Automatic detection by file extension:
+
+| Extension | Algorithm |
+|-----------|-----------|
+| `.gz` | Gzip |
+| `.bz2` | Bzip2 |
+| `.lz4` | LZ4 |
+| `.xz` | XZ |
+| `.zst` | Zstandard |
+
+Override detection for URLs with query parameters:
 
 ```rust,ignore
-let content = oneio::read_to_string_async("https://example.com/data.json.gz").await?;
+use oneio::OneIo;
+
+let client = OneIo::new()?;
+let reader = client.get_reader_with_type(
+    "https://api.example.com/data?format=gz",
+    "gz"
+)?;
 ```
 
-## Environment Variables
+# Protocols
 
-- `ONEIO_ACCEPT_INVALID_CERTS=true` - Accept invalid TLS certificates (insecure, for development only)
+- **Local**: `/path/to/file.txt`
+- **HTTP/HTTPS**: `https://example.com/file.txt.gz`
+- **FTP**: `ftp://ftp.example.com/file.txt` (requires `ftp` feature)
+- **S3**: `s3://bucket/key` (requires `s3` feature)
+
+# Async API
+
+Enable the `async` feature:
+
+```rust,ignore
+let content = oneio::read_to_string_async("https://example.com/data.txt").await?;
+```
+
+Async compression support: `gz`, `bz`, `zstd`
+LZ4 and XZ return `NotSupported` error.
+
+# Error Handling
+
+```rust,ignore
+use oneio::OneIoError;
+
+match oneio::get_reader("file.txt") {
+    Ok(reader) => { /* ... */ }
+    Err(OneIoError::Io(e)) => { /* filesystem error */ }
+    Err(OneIoError::Network(e)) => { /* network error */ }
+    Err(OneIoError::NotSupported(msg)) => { /* feature not enabled */ }
+    _ => { /* future error variants */ }
+}
+```
+
+# Environment Variables
+
+- `ONEIO_ACCEPT_INVALID_CERTS=true` - Accept invalid TLS certificates (development only)
 - `ONEIO_CA_BUNDLE=/path/to/ca.pem` - Add custom CA certificate to trust store
+
+# TLS and Corporate Proxies
+
+For environments with custom TLS certificates (Cloudflare WARP, corporate proxies):
+
+1. Use `native-tls` feature to use the OS trust store:
+   ```toml
+   features = ["http", "native-tls"]
+   ```
+
+2. Or add certificates programmatically:
+   ```rust,ignore
+   let client = OneIo::builder()
+       .add_root_certificate_pem(&std::fs::read("ca.pem")?)?
+       .build()?;
+   ```
+
+3. Or via environment variable:
+   ```bash
+   export ONEIO_CA_BUNDLE=/path/to/ca.pem
+   ```
 */
 
 #![doc(

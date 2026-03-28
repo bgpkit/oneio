@@ -8,9 +8,8 @@ OneIO is a Rust library providing unified IO operations for reading and writing 
 ### Before Committing - Always Run:
 1. **Format code**: `cargo fmt`
 2. **Run linter**: `cargo clippy --all-features` and fix all warnings
-3. **Update README if lib.rs docs changed**: `cargo readme > README.md`
-4. **Update CHANGELOG.md**: Add entries under `[Unreleased]` section
-5. **Run tests**: `cargo test --all-features`
+3. **Update CHANGELOG.md**: Add entries under `[Unreleased]` section
+4. **Run tests**: `cargo test --all-features`
 
 ### Formatting Rules
 - Always run `cargo fmt` before completing any task
@@ -19,10 +18,8 @@ OneIO is a Rust library providing unified IO operations for reading and writing 
 - Follow Rust standard formatting conventions
 
 ### Documentation Requirements
-- When modifying `src/lib.rs` documentation, always regenerate README:
-  ```bash
-  cargo readme > README.md
-  ```
+- Keep lib.rs documentation concise and API-focused (for docs.rs)
+- README.md is maintained separately with more detailed examples
 - Keep documentation examples up-to-date
 - Add doc comments for all public APIs
 - Include usage examples in module-level documentation
@@ -135,7 +132,7 @@ cargo test --features http,gz,bz
 1. Add feature flag to `Cargo.toml`
 2. Implement feature-gated code with `#[cfg(feature = "...")]`
 3. Add tests for the feature
-4. Document in lib.rs and regenerate README
+4. Document in lib.rs (API docs) and README.md (user guide)
 5. Update CHANGELOG.md
 6. Add example if applicable
 
@@ -179,4 +176,4 @@ cargo test --features http,gz,bz
 - **Always run cargo fmt and cargo clippy before committing**
 - **Always update CHANGELOG.md with changes**
 - **No emojis in commits or PRs**
-- **Regenerate README.md when lib.rs docs change**
+- **Maintain both lib.rs (API docs) and README.md (user guide) separately**

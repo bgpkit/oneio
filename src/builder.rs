@@ -5,7 +5,6 @@ use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_LENGTH, USER_AGENT};
 #[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
 use reqwest::Certificate;
-use std::time::Duration;
 
 /// Builder for [`OneIo`], modeled after reqwest's client builder API.
 pub struct OneIoBuilder {
@@ -127,14 +126,14 @@ impl OneIoBuilder {
 
     /// Sets a timeout for the entire request.
     #[cfg(feature = "http")]
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+    pub fn timeout(mut self, timeout: std::time::Duration) -> Self {
         self.http_client_builder = self.http_client_builder.timeout(timeout);
         self
     }
 
     /// Sets a timeout for connecting to a host.
     #[cfg(feature = "http")]
-    pub fn connect_timeout(mut self, timeout: Duration) -> Self {
+    pub fn connect_timeout(mut self, timeout: std::time::Duration) -> Self {
         self.http_client_builder = self.http_client_builder.connect_timeout(timeout);
         self
     }
