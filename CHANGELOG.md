@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## v0.21.0 -- 2026-03-27
 
 ### Breaking changes
 - `OneIoError` is now `#[non_exhaustive]`; `match` expressions without a wildcard `_` arm will fail to compile
