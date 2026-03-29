@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Bug fixes
+- Fixed `digest` command to work with remote URLs (HTTP, HTTPS, FTP, S3)
+
 ## v0.21.0 -- 2026-03-27
 
 ### Breaking changes
