@@ -388,6 +388,7 @@ Follow [SemVer](https://semver.org/):
 ### Release Checklist
 
 - [ ] Version bumped in Cargo.toml
+- [ ] Version references updated in `src/lib.rs` and `README.md` quick-start examples
 - [ ] CHANGELOG.md updated with version header
 - [ ] Git tag created: `git tag vX.Y.Z`
 - [ ] Tests pass on CI
