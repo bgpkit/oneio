@@ -1,63 +1,124 @@
 use oneio::{s3_copy, s3_delete, s3_download, s3_exists, s3_list, s3_reader, s3_stats, s3_upload};
 use std::io::Read;
-use tracing::info;
 
-/// This example shows how to upload a file to S3 and read it back.
+/// This example shows how to use all S3 operations and outputs detailed error info.
 ///
 /// You need to set the following environment variables (e.g., in .env):
 /// - AWS_ACCESS_KEY_ID
 /// - AWS_SECRET_ACCESS_KEY
 /// - AWS_REGION (e.g. "us-east-1") (use "auto" for Cloudflare R2)
 /// - AWS_ENDPOINT
+/// - ONEIO_TEST_BUCKET (optional, defaults to "oneio-test")
 fn main() {
     tracing_subscriber::fmt::init();
 
-    info!("upload to S3");
-    s3_upload("oneio-test", "test/README.md", "README.md").unwrap();
+    let bucket = std::env::var("ONEIO_TEST_BUCKET").unwrap_or_else(|_| "oneio-test".to_string());
+    let test_prefix = format!(
+        "test-{}/",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
 
-    info!("read directly from S3");
-    let mut content = String::new();
-    s3_reader("oneio-test", "test/README.md")
-        .unwrap()
-        .read_to_string(&mut content)
-        .unwrap();
+    println!("Bucket: {}", bucket);
+    println!("Test prefix: {}", test_prefix);
 
-    info!("download from S3");
-    s3_download("oneio-test", "test/README.md", "test/README-2.md").unwrap();
+    // 1. Upload
+    println!("\n=== 1. Upload ===");
+    match s3_upload(&bucket, &format!("{}README.md", test_prefix), "README.md") {
+        Ok(()) => println!("Upload OK"),
+        Err(e) => println!("Upload FAILED: {:?}", e),
+    }
 
-    info!("get S3 file stats");
-    let res = s3_stats("oneio-test", "test/README.md").unwrap();
-    dbg!(res);
+    // 2. Read
+    println!("\n=== 2. Read ===");
+    match s3_reader(&bucket, &format!("{}README.md", test_prefix)) {
+        Ok(mut reader) => {
+            let mut content = String::new();
+            match reader.read_to_string(&mut content) {
+                Ok(n) => println!("Read OK: {} bytes", n),
+                Err(e) => println!("Read FAILED: {:?}", e),
+            }
+        }
+        Err(e) => println!("Reader FAILED: {:?}", e),
+    }
 
-    info!("error if file does not exist");
-    let res = s3_stats("oneio-test", "test/README___NON_EXISTS.md");
-    assert!(res.is_err());
-    assert!(!s3_exists("oneio-test", "test/README___NON_EXISTS.md").unwrap());
-    assert!(s3_exists("oneio-test", "test/README.md").unwrap());
+    // 3. Download
+    println!("\n=== 3. Download ===");
+    match s3_download(
+        &bucket,
+        &format!("{}README.md", test_prefix),
+        "/tmp/oneio-test-download.md",
+    ) {
+        Ok(()) => println!("Download OK"),
+        Err(e) => println!("Download FAILED: {:?}", e),
+    }
 
-    info!("copy S3 file to a different location");
-    let res = s3_copy("oneio-test", "test/README.md", "test/README-temporary.md");
-    assert!(res.is_ok());
-    assert!(s3_exists("oneio-test", "test/README-temporary.md").unwrap());
+    // 4. Stats
+    println!("\n=== 4. Stats ===");
+    match s3_stats(&bucket, &format!("{}README.md", test_prefix)) {
+        Ok(stats) => println!("Stats OK: {:?}", stats),
+        Err(e) => println!("Stats FAILED: {:?}", e),
+    }
 
-    info!("delete temporary copied S3 file");
-    let res = s3_delete("oneio-test", "test/README-temporary.md");
-    assert!(res.is_ok());
-    assert!(!s3_exists("oneio-test", "test/README-temporary.md").unwrap());
+    // 5. Exists
+    println!("\n=== 5. Exists ===");
+    match s3_exists(&bucket, &format!("{}README.md", test_prefix)) {
+        Ok(true) => println!("Exists OK: true"),
+        Ok(false) => println!("Exists OK: false"),
+        Err(e) => println!("Exists FAILED: {:?}", e),
+    }
 
-    info!("list S3 files");
-    let res = s3_list("oneio-test", "test/", Some("/".to_string()), false).unwrap();
-    dbg!(res);
+    // 6. Copy (the problematic one)
+    println!("\n=== 6. Copy ===");
+    match s3_copy(
+        &bucket,
+        &format!("{}README.md", test_prefix),
+        &format!("{}README-temporary.md", test_prefix),
+    ) {
+        Ok(()) => println!("Copy OK"),
+        Err(e) => {
+            println!("Copy FAILED: {:?}", e);
+            println!("\nNOTE: If you see 'Access denied', verify your R2 token has:");
+            println!("  - Object Read & Write permissions (not just Admin)");
+            println!("  - Or try 'Admin Read & Write' to rule out permission issues");
+        }
+    }
 
-    info!("read compressed s3 file by url");
-    let mut writer = oneio::get_writer("test/README.md.gz").unwrap();
-    write!(writer, "{}", content).unwrap();
-    drop(writer);
-    s3_upload("oneio-test", "test/README.md.gz", "test/README.md.gz").unwrap();
-    let mut new_content = String::new();
-    oneio::get_reader("s3://oneio-test/test/README.md.gz")
-        .unwrap()
-        .read_to_string(&mut new_content)
-        .unwrap();
-    assert_eq!(content, new_content);
+    // 7. Verify copy
+    println!("\n=== 7. Verify copy ===");
+    match s3_exists(&bucket, &format!("{}README-temporary.md", test_prefix)) {
+        Ok(true) => println!("Copy exists: true"),
+        Ok(false) => println!("Copy exists: false"),
+        Err(e) => println!("Exists check FAILED: {:?}", e),
+    }
+
+    // 8. List
+    println!("\n=== 8. List ===");
+    match s3_list(&bucket, &test_prefix, None, false) {
+        Ok(keys) => println!("List OK: {} keys found\n  {:?}", keys.len(), keys),
+        Err(e) => println!("List FAILED: {:?}", e),
+    }
+
+    // 9. Delete temp
+    println!("\n=== 9. Delete ===");
+    match s3_delete(&bucket, &format!("{}README-temporary.md", test_prefix)) {
+        Ok(()) => println!("Delete OK"),
+        Err(e) => println!("Delete FAILED: {:?}", e),
+    }
+
+    // 10. List after delete
+    println!("\n=== 10. List after delete ===");
+    match s3_list(&bucket, &test_prefix, None, false) {
+        Ok(keys) => println!("List OK: {} keys remain", keys.len()),
+        Err(e) => println!("List FAILED: {:?}", e),
+    }
+
+    // Cleanup uploaded files
+    println!("\n=== Cleanup ===");
+    let _ = s3_delete(&bucket, &format!("{}README.md", test_prefix));
+    let _ = s3_delete(&bucket, &format!("{}README.md.gz", test_prefix));
+
+    println!("\nDone!");
 }

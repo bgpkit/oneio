@@ -4,8 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Breaking changes
+- Migrated S3 implementation from `rust-s3` to `rusty-s3` (sans-IO signing + reqwest HTTP)
+  - `s3_bucket()` now returns `S3Bucket` instead of `rust_s3::Bucket`
+  - `s3_stats()` now returns `S3ObjectMetadata` instead of `rust_s3::serde_types::HeadObjectResult`
+  - Removed re-export of `rust-s3` types; all S3 types are now owned by oneio
+- `s3_list()` keeps returning `Vec<String>` for backward compatibility
+
+### Changed
+- S3 operations now use the same reqwest HTTP client as HTTP operations (no duplicate HTTP stack)
+- Single PUT uploads for files smaller than the multipart threshold (default: 5MB)
+- Multipart uploads use 8MB chunks with auto-calculated part sizing for very large files
+- `S3Config` is now a public type with endpoint/region fields
+- Added `ONEIO_S3_MULTIPART_THRESHOLD` environment variable to configure when to use multipart upload (default: 5MB, the S3 minimum part size)
+
 ### Bug fixes
+- Fixed `s3_copy()` to use AWS Signature V4 Authorization header for S3-compatible services like R2
 - Fixed `digest` command to work with remote URLs (HTTP, HTTPS, FTP, S3)
+- Fixed `s3_list()` to decode URL-encoded keys returned by `ListObjectsV2`
+- Fixed `oneio s3 list` CLI flag parsing by removing the `-d` short-flag collision
 
 ## v0.21.0 -- 2026-03-27
 

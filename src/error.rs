@@ -20,8 +20,12 @@ pub enum OneIoError {
     },
 
     /// Structured status errors from remote services
-    #[error("{service} status error: {code}")]
-    Status { service: &'static str, code: u16 },
+    #[error("{service} status error: {code}{}", .message.as_deref().map(|m| format!(": {m}")).unwrap_or_default())]
+    Status {
+        service: &'static str,
+        code: u16,
+        message: Option<String>,
+    },
 
     /// Invalid header name or value
     #[error("Invalid header: {0}")]
@@ -54,27 +58,6 @@ impl From<suppaftp::FtpError> for OneIoError {
 #[cfg(feature = "json")]
 impl From<serde_json::Error> for OneIoError {
     fn from(err: serde_json::Error) -> Self {
-        OneIoError::Network(Box::new(err))
-    }
-}
-
-#[cfg(feature = "s3")]
-impl From<s3::error::S3Error> for OneIoError {
-    fn from(err: s3::error::S3Error) -> Self {
-        OneIoError::Network(Box::new(err))
-    }
-}
-
-#[cfg(feature = "s3")]
-impl From<s3::creds::error::CredentialsError> for OneIoError {
-    fn from(err: s3::creds::error::CredentialsError) -> Self {
-        OneIoError::Network(Box::new(err))
-    }
-}
-
-#[cfg(feature = "s3")]
-impl From<s3::region::error::RegionError> for OneIoError {
-    fn from(err: s3::region::error::RegionError) -> Self {
         OneIoError::Network(Box::new(err))
     }
 }
