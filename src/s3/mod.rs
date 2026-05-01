@@ -681,7 +681,7 @@ fn ensure_s3_success(response: Response) -> Result<Response, OneIoError> {
 /// Extract ETag from response headers.
 fn extract_etag(headers: &reqwest::header::HeaderMap) -> Option<String> {
     headers
-        .get("etag")
+        .get(reqwest::header::ETAG)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.trim_matches('"').to_string())
 }
