@@ -139,3 +139,20 @@ jobs:
 
       - name: Test documentation
         run: cargo test --doc --all-features
+
+  test-s3:
+    name: S3 Integration Tests
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run S3 integration tests
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          AWS_REGION: auto
+          ONEIO_TEST_BUCKET: ${{ secrets.R2_TEST_BUCKET }}
+        run: cargo test --test s3_integration --features s3,rustls -- --ignored --test-threads=1
