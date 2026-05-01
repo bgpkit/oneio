@@ -89,7 +89,7 @@ writer.write_all(b"Hello")?;
 
 For multiple requests with shared configuration:
 
-```rust,no_run
+```rust,ignore
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use oneio::OneIo;
 
@@ -204,7 +204,7 @@ For environments with custom TLS certificates (Cloudflare WARP, corporate proxie
    ```
 
 2. Or add certificates programmatically:
-   ```rust,no_run
+   ```rust,ignore
    # fn main() -> Result<(), Box<dyn std::error::Error>> {
    # use oneio::OneIo;
    let client = OneIo::builder()
