@@ -8,14 +8,17 @@ compression format, from local disk or remote locations (HTTP, FTP, S3).
 
 ```toml
 [dependencies]
-oneio = "0.20"
+oneio = "0.21"
 ```
 
-```rust,ignore
+```rust,no_run
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use oneio;
 
 // Read a remote compressed file
 let content = oneio::read_to_string("https://example.com/data.txt.gz")?;
+# Ok(())
+# }
 ```
 
 # Feature Selection
@@ -40,20 +43,21 @@ Enable only what you need:
 **Example: Minimal setup for local files**
 ```toml
 [dependencies]
-oneio = { version = "0.20", default-features = false, features = ["gz"] }
+oneio = { version = "0.21", default-features = false, features = ["gz"] }
 ```
 
 **Example: HTTPS with custom TLS for corporate proxies**
 ```toml
 [dependencies]
-oneio = { version = "0.20", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.21", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 # Core API
 
 ## Reading
 
-```rust,ignore
+```rust,no_run
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 // Read entire file to string
 let content = oneio::read_to_string("data.txt")?;
 
@@ -64,23 +68,29 @@ for line in oneio::read_lines("data.txt")? {
 
 // Get a reader for streaming
 let mut reader = oneio::get_reader("data.txt.gz")?;
+# Ok(())
+# }
 ```
 
 ## Writing
 
-```rust,ignore
+```rust,no_run
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use std::io::Write;
 
 let mut writer = oneio::get_writer("output.txt.gz")?;
 writer.write_all(b"Hello")?;
 // Compression finalized on drop
+# Ok(())
+# }
 ```
 
 ## Reusable Client
 
 For multiple requests with shared configuration:
 
-```rust,ignore
+```rust,no_run
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use oneio::OneIo;
 
 let client = OneIo::builder()
@@ -90,6 +100,8 @@ let client = OneIo::builder()
 
 let data1 = client.read_to_string("https://api.example.com/1.json")?;
 let data2 = client.read_to_string("https://api.example.com/2.json")?;
+# Ok(())
+# }
 ```
 
 # Compression
@@ -106,7 +118,8 @@ Automatic detection by file extension:
 
 Override detection for URLs with query parameters:
 
-```rust,ignore
+```rust,no_run
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use oneio::OneIo;
 
 let client = OneIo::new()?;
@@ -114,6 +127,8 @@ let reader = client.get_reader_with_type(
     "https://api.example.com/data?format=gz",
     "gz"
 )?;
+# Ok(())
+# }
 ```
 
 # Protocols
@@ -127,8 +142,12 @@ let reader = client.get_reader_with_type(
 
 Enable the `async` feature:
 
-```rust,ignore
+```rust
+# #[cfg(feature = "async")]
+# async fn example() -> Result<(), oneio::OneIoError> {
 let content = oneio::read_to_string_async("https://example.com/data.txt").await?;
+# Ok(())
+# }
 ```
 
 Async compression support: `gz`, `bz`, `zstd`
@@ -136,7 +155,8 @@ LZ4 and XZ return `NotSupported` error.
 
 # Error Handling
 
-```rust,ignore
+```rust,no_run
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use oneio::OneIoError;
 
 match oneio::get_reader("file.txt") {
@@ -146,12 +166,33 @@ match oneio::get_reader("file.txt") {
     Err(OneIoError::NotSupported(msg)) => { /* feature not enabled */ }
     _ => { /* future error variants */ }
 }
+# Ok(())
+# }
 ```
 
 # Environment Variables
 
+## General
+
 - `ONEIO_ACCEPT_INVALID_CERTS=true` - Accept invalid TLS certificates (development only)
 - `ONEIO_CA_BUNDLE=/path/to/ca.pem` - Add custom CA certificate to trust store
+
+## S3 (requires `s3` feature)
+
+Required:
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION` - Use `"auto"` for Cloudflare R2
+- `AWS_ENDPOINT` - e.g. `https://xxx.r2.cloudflarestorage.com`
+
+Optional:
+- `AWS_SESSION_TOKEN` - Temporary session token
+- `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
+- `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 8MB)
+
+R2 supports single PUT uploads up to 300 MiB. The default threshold of 8MB
+keeps most files on the simple single-PUT path while using multipart for
+larger files where retry-per-part improves reliability.
 
 # TLS and Corporate Proxies
 
@@ -163,10 +204,14 @@ For environments with custom TLS certificates (Cloudflare WARP, corporate proxie
    ```
 
 2. Or add certificates programmatically:
-   ```rust,ignore
+   ```rust,no_run
+   # fn main() -> Result<(), Box<dyn std::error::Error>> {
+   # use oneio::OneIo;
    let client = OneIo::builder()
        .add_root_certificate_pem(&std::fs::read("ca.pem")?)?
        .build()?;
+   # Ok(())
+   # }
    ```
 
 3. Or via environment variable:

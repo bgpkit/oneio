@@ -57,24 +57,3 @@ impl From<serde_json::Error> for OneIoError {
         OneIoError::Network(Box::new(err))
     }
 }
-
-#[cfg(feature = "s3")]
-impl From<s3::error::S3Error> for OneIoError {
-    fn from(err: s3::error::S3Error) -> Self {
-        OneIoError::Network(Box::new(err))
-    }
-}
-
-#[cfg(feature = "s3")]
-impl From<s3::creds::error::CredentialsError> for OneIoError {
-    fn from(err: s3::creds::error::CredentialsError) -> Self {
-        OneIoError::Network(Box::new(err))
-    }
-}
-
-#[cfg(feature = "s3")]
-impl From<s3::region::error::RegionError> for OneIoError {
-    fn from(err: s3::region::error::RegionError) -> Self {
-        OneIoError::Network(Box::new(err))
-    }
-}

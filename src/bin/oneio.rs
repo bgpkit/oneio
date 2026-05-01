@@ -117,7 +117,7 @@ enum S3Commands {
         prefix: String,
 
         /// Delimiter for directory-style listing
-        #[clap(short, long)]
+        #[clap(short = 'D', long)]
         delimiter: Option<String>,
 
         /// Show directories only

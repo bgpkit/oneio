@@ -13,6 +13,7 @@ Cargo.lock
 .DS_Store
 
 .env
+.env.local
 test
 /examples/debug.rs
 local

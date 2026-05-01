@@ -11,7 +11,7 @@ files from local and remote sources with both synchronous and asynchronous suppo
 ## Quick Start
 
 ```toml
-oneio = "0.20"  # Default: gz, bz, https
+oneio = "0.21"  # Default: gz, bz, https
 ```
 
 ## Feature Selection Guide
@@ -20,31 +20,31 @@ oneio = "0.20"  # Default: gz, bz, https
 
 **Local files only:**
 ```toml
-oneio = { version = "0.20", default-features = false, features = ["gz", "bz"] }
+oneio = { version = "0.21", default-features = false, features = ["gz", "bz"] }
 ```
 
 **HTTPS with default rustls**:
 ```toml
-oneio = { version = "0.20", default-features = false, features = ["https", "gz"] }
+oneio = { version = "0.21", default-features = false, features = ["https", "gz"] }
 ```
 
 **HTTPS with custom TLS backend**:
 ```toml
 # With rustls
-oneio = { version = "0.20", default-features = false, features = ["http", "rustls", "gz"] }
+oneio = { version = "0.21", default-features = false, features = ["http", "rustls", "gz"] }
 
 # With native-tls (recommended for corporate proxies/VPNs)
-oneio = { version = "0.20", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.21", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 **S3-compatible storage**:
 ```toml
-oneio = { version = "0.20", default-features = false, features = ["s3", "https", "gz"] }
+oneio = { version = "0.21", default-features = false, features = ["s3", "https", "gz"] }
 ```
 
 **Async operations**:
 ```toml
-oneio = { version = "0.20", features = ["async"] }
+oneio = { version = "0.21", features = ["async"] }
 ```
 
 ### Available Features
@@ -78,7 +78,7 @@ If you're behind a corporate proxy or VPN like Cloudflare WARP that uses custom 
 
 ```toml
 [dependencies]
-oneio = { version = "0.20", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.21", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 The `native-tls` feature uses your operating system's TLS stack with its trust store, which includes custom corporate certificates. This works for both HTTP/HTTPS and S3 operations.
@@ -255,9 +255,18 @@ Note: Async compression is limited to gz, bz, zstd. LZ4/XZ return `NotSupported`
 ```rust
 use oneio::s3::*;
 
-// Direct S3 operations
+// Upload file to S3
+// Files < 8MB use single PUT; larger files use multipart upload
 s3_upload("my-bucket", "path/to/file.txt", "local/file.txt")?;
+
+// Download file from S3
 s3_download("my-bucket", "path/to/file.txt", "downloaded.txt")?;
+
+// Copy object within the same bucket
+s3_copy("my-bucket", "path/to/file.txt", "path/to/copy.txt")?;
+
+// Delete object
+s3_delete("my-bucket", "path/to/copy.txt")?;
 
 // Read S3 directly using OneIO
 let oneio = oneio::OneIo::new()?;
@@ -266,7 +275,7 @@ let content = oneio.read_to_string("s3://my-bucket/path/to/file.txt")?;
 // Check existence and get metadata
 if s3_exists("my-bucket", "path/to/file.txt")? {
     let stats = s3_stats("my-bucket", "path/to/file.txt")?;
-    println!("Size: {} bytes", stats.content_length.unwrap_or(0));
+    println!("Size: {} bytes", stats.content_length);
 }
 
 // List objects
@@ -276,8 +285,13 @@ let objects = s3_list("my-bucket", "path/", Some("/".to_string()), false)?;
 Required environment variables for S3:
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
-- `AWS_REGION` (use "auto" for Cloudflare R2)
-- `AWS_ENDPOINT`
+- `AWS_REGION` - Use `"auto"` for Cloudflare R2
+- `AWS_ENDPOINT` - e.g. `https://xxx.r2.cloudflarestorage.com`
+
+Optional environment variables for S3:
+- `AWS_SESSION_TOKEN` - Temporary session token
+- `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
+- `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 8MB)
 
 ### Error Handling
 
