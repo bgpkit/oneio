@@ -361,9 +361,12 @@ pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoEr
         _ => 0,
     };
     let host = match url.port() {
-        Some(port) if port != default_port => {
-            format!("{}:{}", url.host_str().unwrap_or(""), port)
-        }
+        Some(port) if port != default_port => format!(
+            "{}:{}",
+            url.host_str()
+                .ok_or_else(|| OneIoError::NotSupported("Invalid URL: no host".to_string()))?,
+            port
+        ),
         _ => url
             .host_str()
             .ok_or_else(|| OneIoError::NotSupported("Invalid URL: no host".to_string()))?
@@ -573,7 +576,11 @@ pub fn s3_stats(bucket: &str, key: &str) -> Result<S3ObjectMetadata, OneIoError>
             .get("content-length")
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
+            .ok_or_else(|| {
+                OneIoError::NotSupported(
+                    "Missing or invalid content-length header in S3 response".to_string(),
+                )
+            })?;
         let content_type = response
             .headers()
             .get("content-type")

@@ -46,16 +46,35 @@ fn generate_test_data(size: usize, seed: &str) -> Vec<u8> {
         .collect()
 }
 
-fn create_temp_file(data: &[u8]) -> std::path::PathBuf {
-    let path = std::env::temp_dir().join(format!(
-        "oneio_test_{}.bin",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::write(&path, data).unwrap();
-    path
+/// RAII wrapper for a temporary file that deletes on drop.
+struct TempFile {
+    path: std::path::PathBuf,
+}
+
+impl TempFile {
+    fn new(data: &[u8]) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "oneio_test_{}.bin",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, data).unwrap();
+        Self { path }
+    }
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+impl AsRef<std::path::Path> for TempFile {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.path
+    }
 }
 
 fn cleanup_test_objects(bucket: &str, prefix: &str) {
@@ -95,9 +114,9 @@ fn test_r2_single_put_small() {
     let prefix = test_prefix("single-put-small");
     let key = format!("{prefix}small-file.txt");
     let data = generate_test_data(1024, "small");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
 
     // Verify by downloading
     let mut downloaded = Vec::new();
@@ -118,9 +137,9 @@ fn test_r2_single_put_just_under_5mb() {
     let key = format!("{prefix}just-under-5mb.bin");
     let size = 5 * 1024 * 1024 - 1;
     let data = generate_test_data(size, "5mbfile");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
 
     let stats = oneio::s3_stats(&bucket, &key).unwrap();
     assert_eq!(stats.content_length, size as u64);
@@ -137,9 +156,9 @@ fn test_r2_multipart_just_over_5mb() {
     let key = format!("{prefix}just-over-5mb.bin");
     let size = 5 * 1024 * 1024 + 1;
     let data = generate_test_data(size, "5mbplus1");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
 
     let stats = oneio::s3_stats(&bucket, &key).unwrap();
     assert_eq!(stats.content_length, size as u64);
@@ -156,9 +175,9 @@ fn test_r2_multipart_10mb() {
     let key = format!("{prefix}multipart-10mb.bin");
     let size = 10 * 1024 * 1024;
     let data = generate_test_data(size, "10mbfile");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
 
     let stats = oneio::s3_stats(&bucket, &key).unwrap();
     assert_eq!(stats.content_length, size as u64);
@@ -175,9 +194,9 @@ fn test_r2_multipart_80mb() {
     let key = format!("{prefix}multipart-80mb.bin");
     let size = 80 * 1024 * 1024;
     let data = generate_test_data(size, "80mbfile");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
 
     let stats = oneio::s3_stats(&bucket, &key).unwrap();
     assert_eq!(stats.content_length, size as u64);
@@ -195,12 +214,12 @@ fn test_r2_download() {
     let prefix = test_prefix("download");
     let key = format!("{prefix}download-test.bin");
     let data = generate_test_data(1024 * 1024, "download");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
 
-    let download_path = create_temp_file(b"");
-    oneio::s3_download(&bucket, &key, download_path.to_str().unwrap()).unwrap();
+    let download_path = TempFile::new(b"");
+    oneio::s3_download(&bucket, &key, download_path.as_ref().to_str().unwrap()).unwrap();
 
     let downloaded = std::fs::read(&download_path).unwrap();
     assert_eq!(downloaded, data);
@@ -215,9 +234,9 @@ fn test_r2_reader_streaming() {
     let prefix = test_prefix("reader-streaming");
     let key = format!("{prefix}stream-test.bin");
     let data = generate_test_data(2 * 1024 * 1024, "stream");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
 
     let mut reader = oneio::s3_reader(&bucket, &key).unwrap();
     let mut downloaded = Vec::new();
@@ -239,8 +258,8 @@ fn test_r2_list_objects() {
     for i in 0..3 {
         let key = format!("{prefix}file-{i}.txt");
         let data = generate_test_data(1024, &format!("list{i}"));
-        let temp_path = create_temp_file(&data);
-        oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+        let temp_path = TempFile::new(&data);
+        oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
     }
 
     let keys = oneio::s3_list(&bucket, &prefix, None, false).unwrap();
@@ -261,9 +280,9 @@ fn test_r2_head_object() {
     let prefix = test_prefix("head-object");
     let key = format!("{prefix}head-test.bin");
     let data = generate_test_data(5 * 1024 * 1024, "headtest");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
 
     let stats = oneio::s3_stats(&bucket, &key).unwrap();
     assert_eq!(stats.content_length, data.len() as u64);
@@ -279,9 +298,9 @@ fn test_r2_exists() {
     let prefix = test_prefix("exists");
     let key = format!("{prefix}exists-test.bin");
     let data = generate_test_data(1024, "exists");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
 
     assert!(oneio::s3_exists(&bucket, &key).unwrap());
     assert!(!oneio::s3_exists(&bucket, &format!("{prefix}nonexistent")).unwrap());
@@ -301,9 +320,9 @@ fn test_r2_copy() {
     let src_key = format!("{prefix}copy-src.bin");
     let dst_key = format!("{prefix}copy-dst.bin");
     let data = generate_test_data(1024 * 1024, "copytest");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &src_key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &src_key, temp_path.as_ref().to_str().unwrap()).unwrap();
     oneio::s3_copy(&bucket, &src_key, &dst_key).unwrap();
 
     assert!(oneio::s3_exists(&bucket, &src_key).unwrap());
@@ -319,9 +338,9 @@ fn test_r2_delete() {
     let prefix = test_prefix("delete");
     let key = format!("{prefix}delete-test.bin");
     let data = generate_test_data(1024, "delete");
-    let temp_path = create_temp_file(&data);
+    let temp_path = TempFile::new(&data);
 
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
     assert!(oneio::s3_exists(&bucket, &key).unwrap());
 
     oneio::s3_delete(&bucket, &key).unwrap();
