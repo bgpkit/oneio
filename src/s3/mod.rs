@@ -262,7 +262,10 @@ fn upload_multipart(
             let response = ensure_s3_success(
                 get_s3_client()
                     .put(url)
-                    .body(std::mem::take(&mut chunk))
+                    .body(std::mem::replace(
+                        &mut chunk,
+                        Vec::with_capacity(chunk_size as usize),
+                    ))
                     .send()?,
             )?;
 
@@ -328,9 +331,6 @@ fn abort_multipart_upload(
     let _ = get_s3_client().delete(url).send();
 }
 
-/// Maximum object size for single-request CopyObject (5 GiB).
-const S3_COPY_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024;
-
 /// Copies an object within the same S3 bucket.
 ///
 /// Uses AWS Signature V4 with Authorization header (not presigned URL).
@@ -347,15 +347,6 @@ const S3_COPY_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024;
 pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoError> {
     let config = config::S3Config::from_env(bucket)?;
     let bucket_obj = config.rusty_bucket()?;
-
-    // Reject copies larger than 5 GiB — single CopyObject cannot handle them.
-    let src_stats = s3_stats(bucket, src_key)?;
-    if src_stats.content_length > S3_COPY_MAX_SIZE {
-        return Err(OneIoError::NotSupported(format!(
-            "CopyObject source is {} bytes, exceeding the 5 GiB limit. Use multipart copy.",
-            src_stats.content_length
-        )));
-    }
 
     // Get the base URL for the destination object
     let url = bucket_obj
