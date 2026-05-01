@@ -259,7 +259,12 @@ fn upload_multipart(
 
             let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
             let url = action.sign(config.ttl);
-            let response = ensure_s3_success(get_s3_client().put(url).body(chunk.clone()).send()?)?;
+            let response = ensure_s3_success(
+                get_s3_client()
+                    .put(url)
+                    .body(std::mem::take(&mut chunk))
+                    .send()?,
+            )?;
 
             let etag = extract_etag(response.headers()).ok_or_else(|| {
                 OneIoError::NotSupported("Missing ETag in UploadPart response".into())
@@ -449,7 +454,7 @@ pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoEr
         .header("x-amz-date", datetime)
         .header("x-amz-content-sha256", payload_hash)
         .header("x-amz-copy-source", copy_source)
-        .header("Authorization", authorization.clone());
+        .header("Authorization", authorization);
 
     // Add session token if present
     if let Some(token) = &config.credentials.session_token {
@@ -679,7 +684,6 @@ fn ensure_s3_success(response: Response) -> Result<Response, OneIoError> {
 fn extract_etag(headers: &reqwest::header::HeaderMap) -> Option<String> {
     headers
         .get("etag")
-        .or_else(|| headers.get("ETag"))
         .and_then(|v| v.to_str().ok())
         .map(|s| s.trim_matches('"').to_string())
 }
@@ -708,42 +712,41 @@ fn s3_error_from_response(response: Response) -> OneIoError {
         404 => OneIoError::Status {
             service: "s3",
             code: 404,
+            message: Some("Object not found".to_string()),
         },
         403 => OneIoError::Status {
             service: "s3",
             code: 403,
+            message: Some("Access denied".to_string()),
         },
         code => OneIoError::Status {
             service: "s3",
             code,
+            message: None,
         },
     }
 }
 
 fn map_parsed_s3_error(status: u16, parsed: ParsedS3Error) -> OneIoError {
     let code = parsed.code.unwrap_or_else(|| format!("S3Status{status}"));
+    let message = parsed.message.unwrap_or_default();
+    let key = parsed.key.unwrap_or_default();
+    let bucket = parsed.bucket_name.unwrap_or_default();
 
-    match code.as_str() {
-        "NoSuchKey" => OneIoError::Status {
-            service: "s3",
-            code: status,
-        },
-        "NoSuchBucket" => OneIoError::Status {
-            service: "s3",
-            code: status,
-        },
-        "AccessDenied" => OneIoError::Status {
-            service: "s3",
-            code: status,
-        },
-        "InvalidAccessKeyId" | "SignatureDoesNotMatch" => OneIoError::Status {
-            service: "s3",
-            code: status,
-        },
-        _ => OneIoError::Status {
-            service: "s3",
-            code: status,
-        },
+    let detail = match code.as_str() {
+        "NoSuchKey" if !key.is_empty() => format!("Object not found: {key}"),
+        "NoSuchKey" => "Object not found".to_string(),
+        "NoSuchBucket" if !bucket.is_empty() => format!("Bucket not found: {bucket}"),
+        "NoSuchBucket" => "Bucket not found".to_string(),
+        "AccessDenied" => format!("Access denied: {message}"),
+        "InvalidAccessKeyId" | "SignatureDoesNotMatch" => format!("{code}: {message}"),
+        _ => format!("{code}: {message}"),
+    };
+
+    OneIoError::Status {
+        service: "s3",
+        code: status,
+        message: Some(detail),
     }
 }
 

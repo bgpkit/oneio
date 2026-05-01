@@ -20,8 +20,12 @@ pub enum OneIoError {
     },
 
     /// Structured status errors from remote services
-    #[error("{service} status error: {code}")]
-    Status { service: &'static str, code: u16 },
+    #[error("{service} status error: {code}{}", .message.as_deref().map(|m| format!(": {m}")).unwrap_or_default())]
+    Status {
+        service: &'static str,
+        code: u16,
+        message: Option<String>,
+    },
 
     /// Invalid header name or value
     #[error("Invalid header: {0}")]

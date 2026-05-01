@@ -308,7 +308,7 @@ match oneio::get_reader("file.txt") {
         // Network error with URL context for debugging
         eprintln!("Failed to fetch {}: {}", url, source);
     }
-    Err(OneIoError::Status { service, code }) => { /* remote status error */ },
+    Err(OneIoError::Status { service, code, .. }) => { /* remote status error */ },
     Err(OneIoError::InvalidCertificate(msg)) => { /* TLS cert error */ },
     Err(OneIoError::NotSupported(msg)) => { /* feature not compiled */ },
     _ => { /* handle future error variants */ }
