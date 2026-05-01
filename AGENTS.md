@@ -446,12 +446,4 @@ RUST_LOG=trace cargo test --features s3 -- --nocapture
 
 ---
 
-## Spec Index
-
-| # | Spec | Status | Branch |
-|---|------|--------|--------|
-| 01 | [rusty-s3-migration](specs/rusty-s3-migration/README.md) | Draft | `dev/migrate-to-rusty-s3` |
-
----
-
-*Last updated: 2025-04-30*
+*Last updated: 2025-05-01*
