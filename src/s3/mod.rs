@@ -76,9 +76,8 @@ fn get_s3_client() -> &'static reqwest::blocking::Client {
             eprintln!("Warning: failed to initialize rustls crypto provider: {e}");
         }
 
-        let mut builder = reqwest::blocking::Client::builder()
-            .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(300));
+        let mut builder =
+            reqwest::blocking::Client::builder().connect_timeout(Duration::from_secs(30));
 
         #[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
         {
@@ -298,16 +297,15 @@ fn upload_multipart(
     };
 
     // CompleteMultipartUpload can return 200 OK with an embedded <Error> body.
-    // We must parse the body to confirm success.
-    let complete_body = response.text().unwrap_or_default();
-    if complete_body.contains("<Error>") {
+    // Validate HTTP status first, then parse the body to confirm success.
+    if !response.status().is_success() {
         abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
-        if let Some(parsed) = parse_s3_error_xml(&complete_body) {
-            return Err(map_parsed_s3_error(200, parsed));
-        }
-        return Err(OneIoError::NotSupported(
-            "Multipart upload completion failed".to_string(),
-        ));
+        return Err(s3_error_from_response(response));
+    }
+    let complete_body = response.text().unwrap_or_default();
+    if let Some(parsed) = parse_s3_error_xml(&complete_body) {
+        abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
+        return Err(map_parsed_s3_error(200, parsed));
     }
 
     Ok(())
@@ -458,14 +456,13 @@ pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoEr
     let response = request_builder.send()?;
 
     // CopyObject can return 200 OK with an embedded <Error> body.
+    // Validate HTTP status first, then parse the body to confirm success.
+    if !response.status().is_success() {
+        return Err(s3_error_from_response(response));
+    }
     let body = response.text().unwrap_or_default();
-    if body.contains("<Error>") {
-        if let Some(parsed) = parse_s3_error_xml(&body) {
-            return Err(map_parsed_s3_error(200, parsed));
-        }
-        return Err(OneIoError::NotSupported(
-            "CopyObject failed with an unknown error".to_string(),
-        ));
+    if let Some(parsed) = parse_s3_error_xml(&body) {
+        return Err(map_parsed_s3_error(200, parsed));
     }
 
     Ok(())
