@@ -89,7 +89,8 @@ writer.write_all(b"Hello")?;
 
 For multiple requests with shared configuration:
 
-```rust,ignore
+```rust,no_run
+# #[cfg(feature = "http")]
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use oneio::OneIo;
 
@@ -102,6 +103,8 @@ let data1 = client.read_to_string("https://api.example.com/1.json")?;
 let data2 = client.read_to_string("https://api.example.com/2.json")?;
 # Ok(())
 # }
+# #[cfg(not(feature = "http"))]
+# fn main() {}
 ```
 
 # Compression
@@ -204,7 +207,8 @@ For environments with custom TLS certificates (Cloudflare WARP, corporate proxie
    ```
 
 2. Or add certificates programmatically:
-   ```rust,ignore
+   ```rust,no_run
+   # #[cfg(feature = "http")]
    # fn main() -> Result<(), Box<dyn std::error::Error>> {
    # use oneio::OneIo;
    let client = OneIo::builder()
@@ -212,6 +216,8 @@ For environments with custom TLS certificates (Cloudflare WARP, corporate proxie
        .build()?;
    # Ok(())
    # }
+   # #[cfg(not(feature = "http"))]
+   # fn main() {}
    ```
 
 3. Or via environment variable:
