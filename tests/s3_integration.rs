@@ -112,12 +112,12 @@ fn test_r2_single_put_small() {
 
 #[test]
 #[ignore = "requires R2 credentials"]
-fn test_r2_single_put_just_under_8mb() {
+fn test_r2_single_put_just_under_5mb() {
     let (bucket, _guard) = begin_s3_test();
-    let prefix = test_prefix("single-put-just-under-8mb");
-    let key = format!("{prefix}just-under-8mb.bin");
-    let size = 8 * 1024 * 1024 - 1;
-    let data = generate_test_data(size, "8mbfile");
+    let prefix = test_prefix("single-put-just-under-5mb");
+    let key = format!("{prefix}just-under-5mb.bin");
+    let size = 5 * 1024 * 1024 - 1;
+    let data = generate_test_data(size, "5mbfile");
     let temp_path = create_temp_file(&data);
 
     oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
@@ -131,31 +131,12 @@ fn test_r2_single_put_just_under_8mb() {
 
 #[test]
 #[ignore = "requires R2 credentials"]
-fn test_r2_single_put_8mb() {
+fn test_r2_multipart_just_over_5mb() {
     let (bucket, _guard) = begin_s3_test();
-    let prefix = test_prefix("single-put-8mb");
-    let key = format!("{prefix}exactly-8mb.bin");
-    let size = 8 * 1024 * 1024;
-    let data = generate_test_data(size, "8mbfile");
-    let temp_path = create_temp_file(&data);
-
-    oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();
-
-    let stats = oneio::s3_stats(&bucket, &key).unwrap();
-    assert_eq!(stats.content_length, size as u64);
-    assert_stream_matches(&bucket, &key, &data);
-
-    cleanup_test_objects(&bucket, &prefix);
-}
-
-#[test]
-#[ignore = "requires R2 credentials"]
-fn test_r2_multipart_just_over_8mb() {
-    let (bucket, _guard) = begin_s3_test();
-    let prefix = test_prefix("multipart-just-over-8mb");
-    let key = format!("{prefix}just-over-8mb.bin");
-    let size = 8 * 1024 * 1024 + 1;
-    let data = generate_test_data(size, "8mbplus1");
+    let prefix = test_prefix("multipart-just-over-5mb");
+    let key = format!("{prefix}just-over-5mb.bin");
+    let size = 5 * 1024 * 1024 + 1;
+    let data = generate_test_data(size, "5mbplus1");
     let temp_path = create_temp_file(&data);
 
     oneio::s3_upload(&bucket, &key, temp_path.to_str().unwrap()).unwrap();

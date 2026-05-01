@@ -13,10 +13,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - S3 operations now use the same reqwest HTTP client as HTTP operations (no duplicate HTTP stack)
-- Single PUT uploads for files smaller than the multipart threshold (default: 8MB)
+- Single PUT uploads for files smaller than the multipart threshold (default: 5MB)
 - Multipart uploads use 8MB chunks with auto-calculated part sizing for very large files
 - `S3Config` is now a public type with endpoint/region fields
-- Added `ONEIO_S3_MULTIPART_THRESHOLD` environment variable to configure when to use multipart upload (default: 8MB, same as chunk size)
+- Added `ONEIO_S3_MULTIPART_THRESHOLD` environment variable to configure when to use multipart upload (default: 5MB, the S3 minimum part size)
 
 ### Bug fixes
 - Fixed `s3_copy()` to use AWS Signature V4 Authorization header for S3-compatible services like R2

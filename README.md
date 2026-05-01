@@ -291,7 +291,7 @@ Required environment variables for S3:
 Optional environment variables for S3:
 - `AWS_SESSION_TOKEN` - Temporary session token
 - `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
-- `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 8MB)
+- `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
 
 ### Error Handling
 

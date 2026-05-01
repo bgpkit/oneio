@@ -188,11 +188,11 @@ Required:
 Optional:
 - `AWS_SESSION_TOKEN` - Temporary session token
 - `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
-- `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 8MB)
+- `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
 
-R2 supports single PUT uploads up to 300 MiB. The default threshold of 8MB
-keeps most files on the simple single-PUT path while using multipart for
-larger files where retry-per-part improves reliability.
+R2 supports single PUT uploads up to 300 MiB. The default threshold of 5MB
+(the S3 minimum part size) uses single-PUT for small files and multipart
+for larger files where retry-per-part improves reliability.
 
 # TLS and Corporate Proxies
 

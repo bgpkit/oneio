@@ -11,7 +11,7 @@
 //! Optional:
 //! - `AWS_SESSION_TOKEN` - Temporary session token
 //! - `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
-//! - `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 8MB)
+//! - `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
 //!
 //! # Upload Behavior
 //!
@@ -71,10 +71,36 @@ static S3_HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
 
 fn get_s3_client() -> &'static reqwest::blocking::Client {
     S3_HTTP_CLIENT.get_or_init(|| {
-        reqwest::blocking::Client::builder()
+        #[cfg(feature = "rustls")]
+        if let Err(e) = crate::crypto::ensure_default_provider() {
+            eprintln!("Warning: failed to initialize rustls crypto provider: {e}");
+        }
+
+        let mut builder = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(30))
-            .build()
-            .expect("Failed to create S3 HTTP client")
+            .timeout(Duration::from_secs(300));
+
+        #[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
+        {
+            if let Ok(ca_bundle_path) = std::env::var("ONEIO_CA_BUNDLE") {
+                if let Ok(pem) = std::fs::read(&ca_bundle_path) {
+                    if let Ok(cert) = reqwest::Certificate::from_pem(&pem) {
+                        builder = builder.add_root_certificate(cert);
+                    }
+                }
+            }
+
+            let accept_invalid = matches!(
+                std::env::var("ONEIO_ACCEPT_INVALID_CERTS")
+                    .unwrap_or_default()
+                    .to_lowercase()
+                    .as_str(),
+                "true" | "yes" | "y" | "1"
+            );
+            builder = builder.danger_accept_invalid_certs(accept_invalid);
+        }
+
+        builder.build().expect("Failed to create S3 HTTP client")
     })
 }
 
@@ -177,12 +203,10 @@ fn upload_single(config: &config::S3Config, key: &str, file_path: &str) -> Resul
     let bucket = config.rusty_bucket()?;
     let creds = config.rusty_credentials();
 
-    // Small single-PUT uploads stay under the multipart threshold, so buffering
-    // them avoids reqwest surfacing early S3 rejections as body disconnects.
-    let body = std::fs::read(file_path)?;
+    let file = std::fs::File::open(file_path)?;
     let action = bucket.put_object(Some(&creds), key);
     let url = action.sign(config.ttl);
-    ensure_s3_success(get_s3_client().put(url).body(body).send()?)?;
+    ensure_s3_success(get_s3_client().put(url).body(file).send()?)?;
     Ok(())
 }
 
@@ -221,26 +245,34 @@ fn upload_multipart(
             .map_err(|e| OneIoError::Network(Box::new(e)))?;
     let upload_id = init_response.upload_id().to_string();
 
-    // 2. Upload parts
+    // 2. Upload parts with abort-on-failure guard
     let mut parts: Vec<String> = Vec::with_capacity(total_parts);
     let mut file = std::fs::File::open(file_path)?;
 
-    for part_number in 1..=total_parts {
-        let mut chunk = vec![0u8; chunk_size as usize];
-        let bytes_read = file.read(&mut chunk)?;
-        if bytes_read == 0 {
-            break;
+    let upload_result = (|| -> Result<(), OneIoError> {
+        for part_number in 1..=total_parts {
+            let mut chunk = vec![0u8; chunk_size as usize];
+            let bytes_read = file.read(&mut chunk)?;
+            if bytes_read == 0 {
+                break;
+            }
+            chunk.truncate(bytes_read);
+
+            let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
+            let url = action.sign(config.ttl);
+            let response = ensure_s3_success(get_s3_client().put(url).body(chunk).send()?)?;
+
+            let etag = extract_etag(response.headers()).ok_or_else(|| {
+                OneIoError::NotSupported("Missing ETag in UploadPart response".into())
+            })?;
+            parts.push(etag);
         }
-        chunk.truncate(bytes_read);
+        Ok(())
+    })();
 
-        let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
-        let url = action.sign(config.ttl);
-        let response = ensure_s3_success(get_s3_client().put(url).body(chunk).send()?)?;
-
-        let etag = extract_etag(response.headers()).ok_or_else(|| {
-            OneIoError::NotSupported("Missing ETag in UploadPart response".into())
-        })?;
-        parts.push(etag);
+    if let Err(e) = upload_result {
+        abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
+        return Err(e);
     }
 
     // 3. Complete multipart upload
@@ -265,9 +297,17 @@ fn upload_multipart(
         }
     };
 
-    if let Err(e) = ensure_s3_success(response) {
+    // CompleteMultipartUpload can return 200 OK with an embedded <Error> body.
+    // We must parse the body to confirm success.
+    let complete_body = response.text().unwrap_or_default();
+    if complete_body.contains("<Error>") {
         abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
-        return Err(e);
+        if let Some(parsed) = parse_s3_error_xml(&complete_body) {
+            return Err(map_parsed_s3_error(200, parsed));
+        }
+        return Err(OneIoError::NotSupported(
+            "Multipart upload completion failed".to_string(),
+        ));
     }
 
     Ok(())
@@ -285,14 +325,31 @@ fn abort_multipart_upload(
     let _ = get_s3_client().delete(url).send();
 }
 
+/// Maximum object size for single-request CopyObject (5 GiB).
+const S3_COPY_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024;
+
 /// Copies an object within the same S3 bucket.
 ///
 /// Uses AWS Signature V4 with Authorization header (not presigned URL).
 /// This is required by some S3-compatible services like Cloudflare R2
 /// that reject presigned URLs for CopyObject operations.
+///
+/// # Limitations
+///
+/// Single-request copy is limited to 5 GiB. For larger objects, use
+/// multipart copy (not yet implemented).
 pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoError> {
     let config = config::S3Config::from_env(bucket)?;
     let bucket_obj = config.rusty_bucket()?;
+
+    // Reject copies larger than 5 GiB — single CopyObject cannot handle them.
+    let src_stats = s3_stats(bucket, src_key)?;
+    if src_stats.content_length > S3_COPY_MAX_SIZE {
+        return Err(OneIoError::NotSupported(format!(
+            "CopyObject source is {} bytes, exceeding the 5 GiB limit. Use multipart copy.",
+            src_stats.content_length
+        )));
+    }
 
     // Get the base URL for the destination object
     let url = bucket_obj
@@ -300,10 +357,21 @@ pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoEr
         .map_err(|e| OneIoError::NotSupported(format!("Invalid destination key: {e}")))?;
     let url_str = url.as_str();
 
-    // Extract host and path for signing
-    let host = url
-        .host_str()
-        .ok_or_else(|| OneIoError::NotSupported("Invalid URL: no host".to_string()))?;
+    // Extract host and path for signing, including non-default port
+    let default_port = match url.scheme() {
+        "https" => 443,
+        "http" => 80,
+        _ => 0,
+    };
+    let host = match url.port() {
+        Some(port) if port != default_port => {
+            format!("{}:{}", url.host_str().unwrap_or(""), port)
+        }
+        _ => url
+            .host_str()
+            .ok_or_else(|| OneIoError::NotSupported("Invalid URL: no host".to_string()))?
+            .to_string(),
+    };
     let canonical_uri = url.path();
 
     // Build x-amz-copy-source header value (/bucket/key)
@@ -322,8 +390,9 @@ pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoEr
     let payload_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     // Build signed headers list (alphabetical order for canonical request)
+    let host_str = host.as_str();
     let mut signed_headers = vec![
-        ("host", host),
+        ("host", host_str),
         ("x-amz-content-sha256", payload_hash),
         ("x-amz-copy-source", copy_source.as_str()),
         ("x-amz-date", datetime.as_str()),
@@ -375,7 +444,7 @@ pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoEr
     // Build and send request
     let mut request_builder = get_s3_client()
         .put(url_str)
-        .header("host", host)
+        .header("host", host_str)
         .header("x-amz-date", datetime)
         .header("x-amz-content-sha256", payload_hash)
         .header("x-amz-copy-source", copy_source)
@@ -386,7 +455,19 @@ pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoEr
         request_builder = request_builder.header("x-amz-security-token", token);
     }
 
-    ensure_s3_success(request_builder.send()?)?;
+    let response = request_builder.send()?;
+
+    // CopyObject can return 200 OK with an embedded <Error> body.
+    let body = response.text().unwrap_or_default();
+    if body.contains("<Error>") {
+        if let Some(parsed) = parse_s3_error_xml(&body) {
+            return Err(map_parsed_s3_error(200, parsed));
+        }
+        return Err(OneIoError::NotSupported(
+            "CopyObject failed with an unknown error".to_string(),
+        ));
+    }
+
     Ok(())
 }
 
@@ -519,7 +600,7 @@ pub fn s3_stats(bucket: &str, key: &str) -> Result<S3ObjectMetadata, OneIoError>
 pub fn s3_exists(bucket: &str, key: &str) -> Result<bool, OneIoError> {
     match s3_stats(bucket, key) {
         Ok(_) => Ok(true),
-        Err(OneIoError::NotSupported(msg)) if msg.contains("not found") => Ok(false),
+        Err(OneIoError::NotSupported(ref msg)) if msg.starts_with("Object not found") => Ok(false),
         Err(err) => Err(err),
     }
 }
@@ -611,19 +692,18 @@ struct ParsedS3Error {
 
 fn s3_error_from_response(response: Response) -> OneIoError {
     let status = response.status().as_u16();
-    let body = response.text().ok();
+    let body_text = response.text().unwrap_or_default();
 
-    if let Some(parsed) = body.as_deref().and_then(parse_s3_error_xml) {
+    if let Some(parsed) = parse_s3_error_xml(&body_text) {
         return map_parsed_s3_error(status, parsed);
     }
 
     match status {
         404 => OneIoError::NotSupported("Object not found".to_string()),
         403 => OneIoError::NotSupported("Access denied".to_string()),
-        code => OneIoError::Status {
-            service: "S3",
-            code,
-        },
+        code => {
+            OneIoError::NotSupported(format!("S3 request failed with status {code}: {body_text}"))
+        }
     }
 }
 

@@ -77,7 +77,7 @@ lib-core = ["http", "ftp", "gz", "bz", "lz", "xz", "zstd", "json"]
 http = ["reqwest"]
 https = ["http", "rustls"] # https needs http
 ftp = ["https", "suppaftp"] # ftp needs https
-s3 = ["rusty-s3", "reqwest", "quick-xml", "percent-encoding", "dep:sha2", "dep:hmac", "dep:hex"]
+s3 = ["rusty-s3", "https", "quick-xml", "percent-encoding", "dep:sha2", "dep:hmac", "dep:hex"]
 
 gz = ["gz-zlib-rs"]
 # internal feature to enable gzip support

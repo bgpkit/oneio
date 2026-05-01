@@ -1,9 +1,20 @@
 //! S3 configuration and credentials.
 
 use crate::OneIoError;
+use std::fmt;
+use std::sync::OnceLock;
+
+// Ensure dotenv is loaded exactly once across all S3 operations.
+static DOTENV_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_dotenv() {
+    DOTENV_INIT.get_or_init(|| {
+        let _ = dotenvy::dotenv();
+    });
+}
 
 /// S3 credentials.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct S3Credentials {
     /// Access key ID.
     pub access_key: String,
@@ -11,6 +22,16 @@ pub struct S3Credentials {
     pub secret_key: String,
     /// Optional session token.
     pub session_token: Option<String>,
+}
+
+impl fmt::Debug for S3Credentials {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("S3Credentials")
+            .field("access_key", &self.access_key)
+            .field("secret_key", &"<redacted>")
+            .field("session_token", &"<redacted>")
+            .finish()
+    }
 }
 
 impl S3Credentials {
@@ -21,7 +42,7 @@ impl S3Credentials {
     /// - AWS_SECRET_ACCESS_KEY
     /// - AWS_SESSION_TOKEN (optional)
     pub fn from_env() -> Result<Self, OneIoError> {
-        dotenvy::dotenv().ok();
+        ensure_dotenv();
 
         let access_key = std::env::var("AWS_ACCESS_KEY_ID")
             .map_err(|_| OneIoError::NotSupported("AWS_ACCESS_KEY_ID not set".to_string()))?;
@@ -38,7 +59,7 @@ impl S3Credentials {
 }
 
 /// S3 configuration used by action functions.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct S3Config {
     /// Bucket name.
     pub bucket: String,
@@ -56,10 +77,24 @@ pub struct S3Config {
     pub multipart_threshold: u64,
 }
 
+impl fmt::Debug for S3Config {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("S3Config")
+            .field("bucket", &self.bucket)
+            .field("credentials", &self.credentials)
+            .field("endpoint", &self.endpoint)
+            .field("region", &self.region)
+            .field("ttl", &self.ttl)
+            .field("multipart_chunk_size", &self.multipart_chunk_size)
+            .field("multipart_threshold", &self.multipart_threshold)
+            .finish()
+    }
+}
+
 impl S3Config {
     /// Create S3Config from environment variables for a given bucket.
     pub fn from_env(bucket: &str) -> Result<Self, OneIoError> {
-        dotenvy::dotenv().ok();
+        ensure_dotenv();
 
         let credentials = S3Credentials::from_env()?;
 
@@ -82,12 +117,13 @@ impl S3Config {
             .and_then(|s| s.parse().ok())
             .unwrap_or(8 * 1024 * 1024);
 
-        // Multipart threshold from env (default: same as chunk size)
+        // Multipart threshold from env (default: 5MB, the S3 minimum part size).
         // Files smaller than this use single PUT; larger files use multipart.
+        const DEFAULT_THRESHOLD: u64 = 5 * 1024 * 1024;
         let multipart_threshold = std::env::var("ONEIO_S3_MULTIPART_THRESHOLD")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(multipart_chunk_size);
+            .unwrap_or(DEFAULT_THRESHOLD);
 
         Ok(S3Config {
             bucket: bucket.to_string(),
@@ -122,9 +158,12 @@ impl S3Config {
             .parse()
             .map_err(|e| OneIoError::NotSupported(format!("Invalid S3 endpoint: {e}")))?;
 
-        // Use path-style for non-AWS endpoints (MinIO, R2, custom)
+        // Use path-style for non-AWS endpoints (MinIO, R2, custom) or when bucket
+        // name contains dots (VirtualHost breaks TLS hostname validation for
+        // dotted buckets like my.bucket.s3.amazonaws.com).
         let is_aws = self.endpoint.contains("amazonaws.com");
-        let url_style = if is_aws {
+        let has_dots = self.bucket.contains('.');
+        let url_style = if is_aws && !has_dots {
             rusty_s3::UrlStyle::VirtualHost
         } else {
             rusty_s3::UrlStyle::Path
