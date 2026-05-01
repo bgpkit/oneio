@@ -187,11 +187,6 @@ impl OneIo {
             Some(protocol) if protocol == "s3" || protocol == "r2" => {
                 let (bucket, key) = s3::s3_url_parse(path)?;
                 let stats = s3::s3_stats(&bucket, &key)?;
-                if stats.content_length == 0 {
-                    return Err(OneIoError::NotSupported(
-                        "S3 object doesn't have content length information".to_string(),
-                    ));
-                }
                 Ok(stats.content_length)
             }
             Some(_) => Err(OneIoError::NotSupported(format!(

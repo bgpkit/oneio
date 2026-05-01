@@ -247,19 +247,19 @@ fn upload_multipart(
     // 2. Upload parts with abort-on-failure guard
     let mut parts: Vec<String> = Vec::with_capacity(total_parts);
     let mut file = std::fs::File::open(file_path)?;
+    let mut chunk = Vec::with_capacity(chunk_size as usize);
 
     let upload_result = (|| -> Result<(), OneIoError> {
         for part_number in 1..=total_parts {
-            let mut chunk = vec![0u8; chunk_size as usize];
-            let bytes_read = file.read(&mut chunk)?;
+            chunk.clear();
+            let bytes_read = file.by_ref().take(chunk_size).read_to_end(&mut chunk)?;
             if bytes_read == 0 {
                 break;
             }
-            chunk.truncate(bytes_read);
 
             let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
             let url = action.sign(config.ttl);
-            let response = ensure_s3_success(get_s3_client().put(url).body(chunk).send()?)?;
+            let response = ensure_s3_success(get_s3_client().put(url).body(chunk.clone()).send()?)?;
 
             let etag = extract_etag(response.headers()).ok_or_else(|| {
                 OneIoError::NotSupported("Missing ETag in UploadPart response".into())
@@ -331,6 +331,9 @@ const S3_COPY_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024;
 /// Uses AWS Signature V4 with Authorization header (not presigned URL).
 /// This is required by some S3-compatible services like Cloudflare R2
 /// that reject presigned URLs for CopyObject operations.
+///
+/// TODO: Upstream CopyObject support to rusty-s3 and remove manual signing.
+/// rusty-s3 v0.9 does not provide a CopyObject action or header-based signing.
 ///
 /// # Limitations
 ///
@@ -554,14 +557,19 @@ pub fn s3_delete(bucket: &str, key: &str) -> Result<(), OneIoError> {
     Ok(())
 }
 
-/// Retrieves the head object result for a given bucket and path in Amazon S3.
-pub fn s3_stats(bucket: &str, key: &str) -> Result<S3ObjectMetadata, OneIoError> {
+/// Perform a HEAD request for an S3 object and return the raw response.
+fn s3_head_object(bucket: &str, key: &str) -> Result<reqwest::blocking::Response, OneIoError> {
     let config = config::S3Config::from_env(bucket)?;
     let bucket_obj = config.rusty_bucket()?;
     let creds = config.rusty_credentials();
     let action = bucket_obj.head_object(Some(&creds), key);
     let url = action.sign(config.ttl);
-    let response = get_s3_client().head(url).send()?;
+    Ok(get_s3_client().head(url).send()?)
+}
+
+/// Retrieves the head object result for a given bucket and path in Amazon S3.
+pub fn s3_stats(bucket: &str, key: &str) -> Result<S3ObjectMetadata, OneIoError> {
+    let response = s3_head_object(bucket, key)?;
 
     if response.status().is_success() {
         let content_length = response
@@ -595,10 +603,11 @@ pub fn s3_stats(bucket: &str, key: &str) -> Result<S3ObjectMetadata, OneIoError>
 
 /// Check if a file exists in an S3 bucket.
 pub fn s3_exists(bucket: &str, key: &str) -> Result<bool, OneIoError> {
-    match s3_stats(bucket, key) {
-        Ok(_) => Ok(true),
-        Err(OneIoError::NotSupported(ref msg)) if msg.starts_with("Object not found") => Ok(false),
-        Err(err) => Err(err),
+    let response = s3_head_object(bucket, key)?;
+    match response.status().as_u16() {
+        200..=299 => Ok(true),
+        404 => Ok(false),
+        _ => Err(s3_error_from_response(response)),
     }
 }
 
@@ -696,42 +705,45 @@ fn s3_error_from_response(response: Response) -> OneIoError {
     }
 
     match status {
-        404 => OneIoError::NotSupported("Object not found".to_string()),
-        403 => OneIoError::NotSupported("Access denied".to_string()),
-        code => {
-            OneIoError::NotSupported(format!("S3 request failed with status {code}: {body_text}"))
-        }
+        404 => OneIoError::Status {
+            service: "s3",
+            code: 404,
+        },
+        403 => OneIoError::Status {
+            service: "s3",
+            code: 403,
+        },
+        code => OneIoError::Status {
+            service: "s3",
+            code,
+        },
     }
 }
 
 fn map_parsed_s3_error(status: u16, parsed: ParsedS3Error) -> OneIoError {
     let code = parsed.code.unwrap_or_else(|| format!("S3Status{status}"));
-    let message = parsed
-        .message
-        .unwrap_or_else(|| format!("S3 request failed with status {status}"));
 
     match code.as_str() {
-        "NoSuchKey" => {
-            let key = parsed.key.unwrap_or_default();
-            if key.is_empty() {
-                OneIoError::NotSupported("Object not found".to_string())
-            } else {
-                OneIoError::NotSupported(format!("Object not found: {key}"))
-            }
-        }
-        "NoSuchBucket" => {
-            let bucket = parsed.bucket_name.unwrap_or_default();
-            if bucket.is_empty() {
-                OneIoError::NotSupported("Bucket not found".to_string())
-            } else {
-                OneIoError::NotSupported(format!("Bucket not found: {bucket}"))
-            }
-        }
-        "AccessDenied" => OneIoError::NotSupported(format!("Access denied: {message}")),
-        "InvalidAccessKeyId" | "SignatureDoesNotMatch" => {
-            OneIoError::NotSupported(format!("{code}: {message}"))
-        }
-        _ => OneIoError::NotSupported(format!("{code}: {message}")),
+        "NoSuchKey" => OneIoError::Status {
+            service: "s3",
+            code: status,
+        },
+        "NoSuchBucket" => OneIoError::Status {
+            service: "s3",
+            code: status,
+        },
+        "AccessDenied" => OneIoError::Status {
+            service: "s3",
+            code: status,
+        },
+        "InvalidAccessKeyId" | "SignatureDoesNotMatch" => OneIoError::Status {
+            service: "s3",
+            code: status,
+        },
+        _ => OneIoError::Status {
+            service: "s3",
+            code: status,
+        },
     }
 }
 
