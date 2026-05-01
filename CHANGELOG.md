@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## v0.22.0 -- 2026-05-01
 
 ### Breaking changes
 - Migrated S3 implementation from `rust-s3` to `rusty-s3` (sans-IO signing + reqwest HTTP)
