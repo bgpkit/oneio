@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- `OneIo::to_lines_lossy` — lossy line iterator from any `Box<dyn Read + Send>`
+- `read_lines_lossy` / `OneIo::read_lines_lossy` — line iteration with invalid UTF-8 replaced by `U+FFFD`
+- `read_to_string_lossy` / `OneIo::read_to_string_lossy` / `read_to_string_lossy_async` — full-file read with lossy UTF-8
+- `read_to_bytes` / `OneIo::read_to_bytes` / `read_to_bytes_async` — byte-perfect read without UTF-8 validation
+- `--strict-utf8` CLI flag for strict UTF-8 validation in the CLI
+
+### Changed
+- CLI now defaults to lossy UTF-8 reading; no longer exits on invalid byte sequences
+- Documentation examples updated to use lossy APIs
+
+### Deprecated
+- `read_lines` — use `read_lines_lossy` for lossy text, `read_to_bytes` for byte-perfect whole-file reads, or `get_reader` + `BufReader` for streaming byte processing
+- `read_to_string` — use `read_to_string_lossy` or `read_to_bytes`
+- `read_to_string_async` — use `read_to_string_lossy_async` or `read_to_bytes_async`
+
 ## v0.22.0 -- 2026-05-01
 
 ### Breaking changes

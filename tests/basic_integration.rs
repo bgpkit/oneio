@@ -58,11 +58,11 @@ fn test_read(file_path: &str) {
     assert_eq!(text.as_str(), TEST_TEXT);
 
     assert_eq!(
-        oneio::read_to_string(file_path).unwrap().as_str(),
+        oneio::read_to_string_lossy(file_path).unwrap().as_str(),
         TEST_TEXT
     );
 
-    let lines = oneio::read_lines(file_path)
+    let lines = oneio::read_lines_lossy(file_path)
         .unwrap()
         .map(|line| line.unwrap())
         .collect::<Vec<String>>();
@@ -152,8 +152,8 @@ fn test_oneio_builder_reuses_default_headers() {
         .build()
         .unwrap();
 
-    let first = oneio.read_to_string(&url).unwrap();
-    let second = oneio.read_to_string(&url).unwrap();
+    let first = oneio.read_to_string_lossy(&url).unwrap();
+    let second = oneio.read_to_string_lossy(&url).unwrap();
 
     assert_eq!(first, TEST_TEXT);
     assert_eq!(second, TEST_TEXT);

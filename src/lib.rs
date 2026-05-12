@@ -16,7 +16,7 @@ oneio = "0.22"
 use oneio;
 
 // Read a remote compressed file
-let content = oneio::read_to_string("https://example.com/data.txt.gz")?;
+let content = oneio::read_to_string_lossy("https://example.com/data.txt.gz")?;
 # Ok(())
 # }
 ```
@@ -59,10 +59,10 @@ oneio = { version = "0.22", default-features = false, features = ["http", "nativ
 ```rust,no_run
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 // Read entire file to string
-let content = oneio::read_to_string("data.txt")?;
+let content = oneio::read_to_string_lossy("data.txt")?;
 
 // Read lines
-for line in oneio::read_lines("data.txt")? {
+for line in oneio::read_lines_lossy("data.txt")? {
     println!("{}", line?);
 }
 
@@ -99,8 +99,8 @@ let client = OneIo::builder()
     .timeout(std::time::Duration::from_secs(30))
     .build()?;
 
-let data1 = client.read_to_string("https://api.example.com/1.json")?;
-let data2 = client.read_to_string("https://api.example.com/2.json")?;
+let data1 = client.read_to_string_lossy("https://api.example.com/1.json")?;
+let data2 = client.read_to_string_lossy("https://api.example.com/2.json")?;
 # Ok(())
 # }
 # #[cfg(not(feature = "http"))]
@@ -148,7 +148,7 @@ Enable the `async` feature:
 ```rust
 # #[cfg(feature = "async")]
 # async fn example() -> Result<(), oneio::OneIoError> {
-let content = oneio::read_to_string_async("https://example.com/data.txt").await?;
+let content = oneio::read_to_string_lossy_async("https://example.com/data.txt").await?;
 # Ok(())
 # }
 ```
@@ -310,8 +310,21 @@ pub fn exists(path: &str) -> Result<bool, OneIoError> {
 }
 
 /// Reads the full contents of a file or URL into a string.
+#[deprecated(since = "0.23.0", note = "Use read_to_string_lossy or read_to_bytes")]
+#[allow(deprecated)]
 pub fn read_to_string(path: &str) -> Result<String, OneIoError> {
     builder::default_oneio()?.read_to_string(path)
+}
+
+/// Reads the full contents of a file or URL into a string,
+/// replacing invalid UTF-8 sequences with `U+FFFD`.
+pub fn read_to_string_lossy(path: &str) -> Result<String, OneIoError> {
+    builder::default_oneio()?.read_to_string_lossy(path)
+}
+
+/// Reads the full contents of a file or URL into raw bytes.
+pub fn read_to_bytes(path: &str) -> Result<Vec<u8>, OneIoError> {
+    builder::default_oneio()?.read_to_bytes(path)
 }
 
 /// Reads and deserializes JSON into the requested type.
@@ -321,10 +334,23 @@ pub fn read_json_struct<T: serde::de::DeserializeOwned>(path: &str) -> Result<T,
 }
 
 /// Returns an iterator over lines from the provided path.
+#[deprecated(
+    since = "0.23.0",
+    note = "Use read_lines_lossy for lossy text, read_to_bytes for byte-perfect whole-file reads, or get_reader for byte streaming"
+)]
+#[allow(deprecated)]
 pub fn read_lines(
     path: &str,
 ) -> Result<std::io::Lines<std::io::BufReader<Box<dyn Read + Send>>>, OneIoError> {
     builder::default_oneio()?.read_lines(path)
+}
+
+/// Like [`read_lines`], but invalid UTF-8 sequences are replaced with
+/// `U+FFFD` instead of producing `Err(io::ErrorKind::InvalidData)`.
+pub fn read_lines_lossy(
+    path: &str,
+) -> Result<impl Iterator<Item = std::io::Result<String>> + Send, OneIoError> {
+    builder::default_oneio()?.read_lines_lossy(path)
 }
 
 /// Downloads a remote resource to a local path.
@@ -351,9 +377,27 @@ pub async fn get_reader_async(
 }
 
 /// Reads the entire content of a file asynchronously into a string.
+#[deprecated(
+    since = "0.23.0",
+    note = "Use read_to_string_lossy_async or read_to_bytes_async"
+)]
+#[allow(deprecated)]
 #[cfg(feature = "async")]
 pub async fn read_to_string_async(path: &str) -> Result<String, OneIoError> {
     async_reader::read_to_string_async(path).await
+}
+
+/// Reads the entire content of a file asynchronously into a string,
+/// replacing invalid UTF-8 sequences with `U+FFFD`.
+#[cfg(feature = "async")]
+pub async fn read_to_string_lossy_async(path: &str) -> Result<String, OneIoError> {
+    async_reader::read_to_string_lossy_async(path).await
+}
+
+/// Reads the entire content of a file asynchronously into raw bytes.
+#[cfg(feature = "async")]
+pub async fn read_to_bytes_async(path: &str) -> Result<Vec<u8>, OneIoError> {
+    async_reader::read_to_bytes_async(path).await
 }
 
 /// Downloads a file asynchronously from a URL to a local path.
