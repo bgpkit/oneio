@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## v0.23.0 -- 2026-05-12
+
 ### Added
 - `OneIo::to_lines_lossy` — lossy line iterator from any `Box<dyn Read + Send>`
 - `read_lines_lossy` / `OneIo::read_lines_lossy` — line iteration with invalid UTF-8 replaced by `U+FFFD`
