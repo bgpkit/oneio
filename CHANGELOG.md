@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased changes
+## [Unreleased]
 
 ### Added
 - `OneIo::to_lines_lossy` — lossy line iterator from any `Box<dyn Read + Send>`

@@ -81,47 +81,62 @@ async fn async_download_http_to_file() {
     let _ = std::fs::remove_file(tmp_path);
 }
 
+fn tmp_path(name: &str) -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let id = COUNTER.fetch_add(1, Ordering::SeqCst);
+    std::env::temp_dir().join(format!(
+        "oneio_async_test_{}_{}_{name}",
+        std::process::id(),
+        id
+    ))
+}
+
 #[tokio::test]
 async fn async_read_to_string_lossy_latin1() {
-    let tmp_path = "tests/_tmp_async_lossy.txt";
-    let _ = std::fs::remove_file(tmp_path);
-    std::fs::write(tmp_path, b"valid\nbad: \xf3\nnext\n").unwrap();
+    let tmp_path = tmp_path("lossy");
+    let _ = std::fs::remove_file(&tmp_path);
+    std::fs::write(&tmp_path, b"valid\nbad: \xf3\nnext\n").unwrap();
 
-    let content = oneio::read_to_string_lossy_async(tmp_path).await.unwrap();
+    let content = oneio::read_to_string_lossy_async(tmp_path.to_str().unwrap())
+        .await
+        .unwrap();
     assert!(content.contains('\u{FFFD}'));
     assert!(content.contains("valid"));
     assert!(content.contains("next"));
 
-    let _ = std::fs::remove_file(tmp_path);
+    let _ = std::fs::remove_file(&tmp_path);
 }
 
 #[tokio::test]
 async fn async_read_to_bytes_roundtrip() {
-    let tmp_path = "tests/_tmp_async_bytes.txt";
-    let _ = std::fs::remove_file(tmp_path);
+    let tmp_path = tmp_path("bytes");
+    let _ = std::fs::remove_file(&tmp_path);
     let expected = b"valid\nbad: \xf3\nnext\n";
-    std::fs::write(tmp_path, expected).unwrap();
+    std::fs::write(&tmp_path, expected).unwrap();
 
-    let bytes = oneio::read_to_bytes_async(tmp_path).await.unwrap();
+    let bytes = oneio::read_to_bytes_async(tmp_path.to_str().unwrap())
+        .await
+        .unwrap();
     assert_eq!(bytes, expected);
 
-    let _ = std::fs::remove_file(tmp_path);
+    let _ = std::fs::remove_file(&tmp_path);
 }
 
 #[tokio::test]
 #[allow(deprecated)]
 async fn async_read_to_string_async_strict_still_fails() {
-    let tmp_path = "tests/_tmp_async_strict.txt";
-    let _ = std::fs::remove_file(tmp_path);
-    std::fs::write(tmp_path, b"valid\nbad: \xf3\nnext\n").unwrap();
+    let tmp_path = tmp_path("strict");
+    let _ = std::fs::remove_file(&tmp_path);
+    std::fs::write(&tmp_path, b"valid\nbad: \xf3\nnext\n").unwrap();
 
-    let result = oneio::read_to_string_async(tmp_path).await;
+    let result = oneio::read_to_string_async(tmp_path.to_str().unwrap()).await;
     assert!(
         result.is_err(),
         "strict async read_to_string should fail on Latin-1 byte"
     );
 
-    let _ = std::fs::remove_file(tmp_path);
+    let _ = std::fs::remove_file(&tmp_path);
 }
 
 #[cfg(feature = "any_gz")]
