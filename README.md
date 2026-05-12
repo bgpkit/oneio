@@ -111,7 +111,7 @@ Read all content into a string (works with compression and remote files automati
 ```rust
 use oneio;
 
-let content = oneio::read_to_string("https://spaces.bgpkit.org/oneio/test_data.txt.gz")?;
+let content = oneio::read_to_string_lossy("https://spaces.bgpkit.org/oneio/test_data.txt.gz")?;
 println!("{}", content);
 ```
 
@@ -120,7 +120,7 @@ Read line by line:
 ```rust
 use oneio;
 
-let lines = oneio::read_lines("https://spaces.bgpkit.org/oneio/test_data.txt.gz")?
+let lines = oneio::read_lines_lossy("https://spaces.bgpkit.org/oneio/test_data.txt.gz")?
     .map(|line| line.unwrap())
     .collect::<Vec<String>>();
 
@@ -151,7 +151,7 @@ writer.write_all(b"Hello, compressed world!")?;
 drop(writer); // Important: close the writer
 
 // Read it back
-let content = oneio::read_to_string("output.txt.gz")?;
+let content = oneio::read_to_string_lossy("output.txt.gz")?;
 ```
 
 ### Reusable OneIo Clients
@@ -171,8 +171,8 @@ let oneio = OneIo::builder()
     .build()?;
 
 // Reuse the same configuration for multiple requests
-let content1 = oneio.read_to_string("https://api.example.com/data1.json")?;
-let content2 = oneio.read_to_string("https://api.example.com/data2.json")?;
+let content1 = oneio.read_to_string_lossy("https://api.example.com/data1.json")?;
+let content2 = oneio.read_to_string_lossy("https://api.example.com/data2.json")?;
 ```
 
 **Builder Methods:**
@@ -237,7 +237,7 @@ use oneio;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let content = oneio::read_to_string_async("https://example.com/data.json.gz").await?;
+    let content = oneio::read_to_string_lossy_async("https://example.com/data.json.gz").await?;
 
     oneio::download_async(
         "https://example.com/data.csv.gz",
@@ -270,7 +270,7 @@ s3_delete("my-bucket", "path/to/copy.txt")?;
 
 // Read S3 directly using OneIO
 let oneio = oneio::OneIo::new()?;
-let content = oneio.read_to_string("s3://my-bucket/path/to/file.txt")?;
+let content = oneio.read_to_string_lossy("s3://my-bucket/path/to/file.txt")?;
 
 // Check existence and get metadata
 if s3_exists("my-bucket", "path/to/file.txt")? {
@@ -327,7 +327,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     oneio::crypto::ensure_default_provider()?;
 
     // Now all HTTPS/S3/FTP operations will work
-    let content = oneio::read_to_string("https://example.com/data.txt")?;
+    let content = oneio::read_to_string_lossy("https://example.com/data.txt")?;
 
     Ok(())
 }

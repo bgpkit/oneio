@@ -59,6 +59,10 @@ struct Cli {
     #[clap(long)]
     compression: Option<String>,
 
+    /// Fail on invalid UTF-8 instead of replacing with U+FFFD
+    #[clap(long)]
+    strict_utf8: bool,
+
     #[clap(subcommand)]
     command: Option<Commands>,
 }
@@ -325,19 +329,25 @@ fn main() {
         oneio.get_reader(path)
     };
 
-    let reader = Box::new(BufReader::new(match reader_result {
+    let reader = match reader_result {
         Ok(r) => r,
         Err(e) => {
             eprintln!("cannot open {path}: {e}");
             exit(1);
         }
-    }));
+    };
 
     let mut stdout = std::io::stdout();
     let mut count_lines = 0usize;
     let mut count_chars = 0usize;
 
-    for line in reader.lines() {
+    let lines: Box<dyn Iterator<Item = std::io::Result<String>>> = if cli.strict_utf8 {
+        Box::new(BufReader::new(reader).lines())
+    } else {
+        Box::new(oneio.to_lines_lossy(reader))
+    };
+
+    for line in lines {
         let line = match line {
             Ok(l) => l,
             Err(e) => {

@@ -12,6 +12,30 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 use std::path::Path;
 
+/// Private helper: lossy UTF-8 line iterator over any `BufRead`.
+///
+/// Invalid UTF-8 sequences are replaced with `U+FFFD`. Line splitting matches
+/// `BufRead::lines()`: strips terminal `\n` and `\r\n`.
+fn lossy_lines<B: BufRead>(mut buf: B) -> impl Iterator<Item = std::io::Result<String>> {
+    let mut bytes = Vec::new();
+    std::iter::from_fn(move || {
+        bytes.clear();
+        match buf.read_until(b'\n', &mut bytes) {
+            Ok(0) => None,
+            Ok(_) => {
+                if bytes.ends_with(b"\n") {
+                    bytes.pop();
+                    if bytes.ends_with(b"\r") {
+                        bytes.pop();
+                    }
+                }
+                Some(Ok(String::from_utf8_lossy(&bytes).into_owned()))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    })
+}
+
 /// Reusable OneIO client for applying request configuration across multiple operations.
 ///
 /// Use [`OneIo::builder()`] to customize default headers, TLS certificates, and
@@ -148,11 +172,29 @@ impl OneIo {
     }
 
     /// Reads the full contents of a file or URL into a string.
+    #[deprecated(since = "0.23.0", note = "Use read_to_string_lossy or read_to_bytes")]
     pub fn read_to_string(&self, path: &str) -> Result<String, OneIoError> {
         let mut reader = self.get_reader(path)?;
         let mut content = String::new();
         reader.read_to_string(&mut content)?;
         Ok(content)
+    }
+
+    /// Reads the full contents of a file or URL into a string,
+    /// replacing invalid UTF-8 sequences with `U+FFFD`.
+    pub fn read_to_string_lossy(&self, path: &str) -> Result<String, OneIoError> {
+        let mut reader = self.get_reader(path)?;
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf)?;
+        Ok(String::from_utf8_lossy(&buf).into_owned())
+    }
+
+    /// Reads the full contents of a file or URL into raw bytes.
+    pub fn read_to_bytes(&self, path: &str) -> Result<Vec<u8>, OneIoError> {
+        let mut reader = self.get_reader(path)?;
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf)?;
+        Ok(buf)
     }
 
     /// Reads and deserializes JSON into the requested type.
@@ -164,12 +206,38 @@ impl OneIo {
     }
 
     /// Returns an iterator over lines from the provided path.
+    #[deprecated(
+        since = "0.23.0",
+        note = "Use read_lines_lossy for lossy text, read_to_bytes for byte-perfect whole-file reads, or get_reader for byte streaming"
+    )]
     pub fn read_lines(
         &self,
         path: &str,
     ) -> Result<Lines<BufReader<Box<dyn Read + Send>>>, OneIoError> {
         let reader = self.get_reader(path)?;
         Ok(BufReader::new(reader).lines())
+    }
+
+    /// Converts any reader into a lossy line iterator.
+    ///
+    /// Invalid UTF-8 sequences are replaced with `U+FFFD`. I/O errors from the
+    /// underlying reader still propagate as `Err`.
+    pub fn to_lines_lossy(
+        &self,
+        reader: Box<dyn Read + Send>,
+    ) -> impl Iterator<Item = std::io::Result<String>> {
+        lossy_lines(BufReader::new(reader))
+    }
+
+    /// Like [`read_lines`], but invalid UTF-8 sequences are replaced with
+    /// `U+FFFD` instead of producing `Err(io::ErrorKind::InvalidData)`.
+    /// I/O errors from the underlying reader still propagate as `Err`.
+    pub fn read_lines_lossy(
+        &self,
+        path: &str,
+    ) -> Result<impl Iterator<Item = std::io::Result<String>>, OneIoError> {
+        let reader = self.get_reader(path)?;
+        Ok(self.to_lines_lossy(reader))
     }
 
     /// Determines the raw content length for a local or remote path.

@@ -18,12 +18,35 @@ pub async fn get_reader_async(path: &str) -> Result<Box<dyn AsyncRead + Send + U
 }
 
 /// Reads the entire content of a file asynchronously into a string
+#[deprecated(
+    since = "0.23.0",
+    note = "Use read_to_string_lossy_async or read_to_bytes_async"
+)]
 #[cfg(feature = "async")]
 pub async fn read_to_string_async(path: &str) -> Result<String, OneIoError> {
     let mut reader = get_reader_async(path).await?;
     let mut content = String::new();
     reader.read_to_string(&mut content).await?;
     Ok(content)
+}
+
+/// Reads the entire content of a file asynchronously into a string,
+/// replacing invalid UTF-8 sequences with `U+FFFD`.
+#[cfg(feature = "async")]
+pub async fn read_to_string_lossy_async(path: &str) -> Result<String, OneIoError> {
+    let mut reader = get_reader_async(path).await?;
+    let mut buf = Vec::new();
+    reader.read_to_end(&mut buf).await?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Reads the entire content of a file asynchronously into raw bytes.
+#[cfg(feature = "async")]
+pub async fn read_to_bytes_async(path: &str) -> Result<Vec<u8>, OneIoError> {
+    let mut reader = get_reader_async(path).await?;
+    let mut buf = Vec::new();
+    reader.read_to_end(&mut buf).await?;
+    Ok(buf)
 }
 
 /// Downloads a file asynchronously from a URL to a local path
