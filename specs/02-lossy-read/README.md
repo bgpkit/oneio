@@ -196,7 +196,7 @@ Test the private `lossy_lines` helper directly using `std::io::Cursor`:
 | 1 | `test_lossy_lines_basic` | `b"line1\nline2\n"` | 2 lines: `"line1"`, `"line2"` |
 | 2 | `test_lossy_lines_latin1` | `LATIN1_BYTES` | 3 lines: `"valid"`, `"bad: \u{FFFD}"`, `"next"` |
 | 3 | `test_lossy_lines_crlf` | `CRLF_BYTES` | 2 lines: `"line1"`, `"line2"` (no trailing `\r`) |
-| 4 | `test_lossy_lines_bare_cr` | `BARE_CR_BYTES` | 2 lines: `"line1\r"`, `"line2\r"` (bare `\r` preserved) |
+| 4 | `test_lossy_lines_bare_cr` | `BARE_CR_BYTES` | 1 line: `"line1\rline2\r"` (bare `\r` preserved, only `\n` splits) |
 | 5 | `test_lossy_lines_no_trailing_newline` | `NO_NEWLINE_BYTES` | 1 line: `"no newline"` |
 | 6 | `test_lossy_lines_empty` | `EMPTY_BYTES` | 0 lines |
 | 7 | `test_lossy_lines_all_invalid` | `ALL_INVALID_BYTES` | 1 line: `"\u{FFFD}\u{FFFD}\u{FFFD}"` |

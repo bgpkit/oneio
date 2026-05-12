@@ -81,6 +81,49 @@ async fn async_download_http_to_file() {
     let _ = std::fs::remove_file(tmp_path);
 }
 
+#[tokio::test]
+async fn async_read_to_string_lossy_latin1() {
+    let tmp_path = "tests/_tmp_async_lossy.txt";
+    let _ = std::fs::remove_file(tmp_path);
+    std::fs::write(tmp_path, b"valid\nbad: \xf3\nnext\n").unwrap();
+
+    let content = oneio::read_to_string_lossy_async(tmp_path).await.unwrap();
+    assert!(content.contains('\u{FFFD}'));
+    assert!(content.contains("valid"));
+    assert!(content.contains("next"));
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+#[tokio::test]
+async fn async_read_to_bytes_roundtrip() {
+    let tmp_path = "tests/_tmp_async_bytes.txt";
+    let _ = std::fs::remove_file(tmp_path);
+    let expected = b"valid\nbad: \xf3\nnext\n";
+    std::fs::write(tmp_path, expected).unwrap();
+
+    let bytes = oneio::read_to_bytes_async(tmp_path).await.unwrap();
+    assert_eq!(bytes, expected);
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+#[tokio::test]
+#[allow(deprecated)]
+async fn async_read_to_string_async_strict_still_fails() {
+    let tmp_path = "tests/_tmp_async_strict.txt";
+    let _ = std::fs::remove_file(tmp_path);
+    std::fs::write(tmp_path, b"valid\nbad: \xf3\nnext\n").unwrap();
+
+    let result = oneio::read_to_string_async(tmp_path).await;
+    assert!(
+        result.is_err(),
+        "strict async read_to_string should fail on Latin-1 byte"
+    );
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
 #[cfg(feature = "any_gz")]
 #[tokio::test]
 async fn async_download_preserves_compressed_bytes() {

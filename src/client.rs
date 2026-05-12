@@ -225,7 +225,7 @@ impl OneIo {
     pub fn to_lines_lossy(
         &self,
         reader: Box<dyn Read + Send>,
-    ) -> impl Iterator<Item = std::io::Result<String>> {
+    ) -> impl Iterator<Item = std::io::Result<String>> + Send {
         lossy_lines(BufReader::new(reader))
     }
 
@@ -235,7 +235,7 @@ impl OneIo {
     pub fn read_lines_lossy(
         &self,
         path: &str,
-    ) -> Result<impl Iterator<Item = std::io::Result<String>>, OneIoError> {
+    ) -> Result<impl Iterator<Item = std::io::Result<String>> + Send, OneIoError> {
         let reader = self.get_reader(path)?;
         Ok(self.to_lines_lossy(reader))
     }

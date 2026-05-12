@@ -349,7 +349,7 @@ pub fn read_lines(
 /// `U+FFFD` instead of producing `Err(io::ErrorKind::InvalidData)`.
 pub fn read_lines_lossy(
     path: &str,
-) -> Result<impl Iterator<Item = std::io::Result<String>>, OneIoError> {
+) -> Result<impl Iterator<Item = std::io::Result<String>> + Send, OneIoError> {
     builder::default_oneio()?.read_lines_lossy(path)
 }
 

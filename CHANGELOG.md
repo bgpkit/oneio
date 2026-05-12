@@ -16,7 +16,7 @@ All notable changes to this project will be documented in this file.
 - Documentation examples updated to use lossy APIs
 
 ### Deprecated
-- `read_lines` — use `read_lines_lossy` or `get_reader` + `BufRead::split` for byte-perfect reading
+- `read_lines` — use `read_lines_lossy` for lossy text, `read_to_bytes` for byte-perfect whole-file reads, or `get_reader` + `BufReader` for streaming byte processing
 - `read_to_string` — use `read_to_string_lossy` or `read_to_bytes`
 - `read_to_string_async` — use `read_to_string_lossy_async` or `read_to_bytes_async`
 

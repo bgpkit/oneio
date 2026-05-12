@@ -1,7 +1,7 @@
 //! Tests for lossy UTF-8 reading and byte-perfect reads.
 //!
-//! These validate the `read_lines_lossy`, `read_to_string_lossy`, `read_to_bytes`,
-//! and async variants added to handle real-world non-UTF-8 data.
+//! These validate the `read_lines_lossy`, `read_to_string_lossy`, and `read_to_bytes`
+//! sync APIs added to handle real-world non-UTF-8 data.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -14,19 +14,36 @@ const EMPTY_BYTES: &[u8] = b"";
 const ALL_INVALID_BYTES: &[u8] = b"\xff\xfe\xfd";
 const MIXED_INVALID_BYTES: &[u8] = b"hello\n\xffworld\n";
 
-fn write_temp(bytes: &[u8]) -> PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let path = std::env::temp_dir().join(format!(
-        "oneio_lossy_test_{}_{}.txt",
-        std::process::id(),
-        id
-    ));
-    let mut file = std::fs::File::create(&path).unwrap();
-    file.write_all(bytes).unwrap();
-    file.flush().unwrap();
-    path
+/// RAII temp file that deletes on drop.
+struct TempFile {
+    path: PathBuf,
+}
+
+impl TempFile {
+    fn new(bytes: &[u8]) -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let path = std::env::temp_dir().join(format!(
+            "oneio_lossy_test_{}_{}.txt",
+            std::process::id(),
+            id
+        ));
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(bytes).unwrap();
+        file.flush().unwrap();
+        Self { path }
+    }
+
+    fn path(&self) -> &PathBuf {
+        &self.path
+    }
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -150,7 +167,8 @@ fn test_lossy_lines_continuation_past_bad_byte() {
 
 #[test]
 fn test_read_lines_lossy_latin1() {
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let lines: Vec<String> = oneio::read_lines_lossy(path.to_str().unwrap())
         .unwrap()
         .map(|r| r.unwrap())
@@ -161,7 +179,8 @@ fn test_read_lines_lossy_latin1() {
 
 #[test]
 fn test_read_lines_lossy_crlf() {
-    let path = write_temp(CRLF_BYTES);
+    let file = TempFile::new(CRLF_BYTES);
+    let path = file.path().clone();
     let lines: Vec<String> = oneio::read_lines_lossy(path.to_str().unwrap())
         .unwrap()
         .map(|r| r.unwrap())
@@ -172,7 +191,8 @@ fn test_read_lines_lossy_crlf() {
 
 #[test]
 fn test_read_lines_lossy_empty() {
-    let path = write_temp(EMPTY_BYTES);
+    let file = TempFile::new(EMPTY_BYTES);
+    let path = file.path().clone();
     let lines: Vec<String> = oneio::read_lines_lossy(path.to_str().unwrap())
         .unwrap()
         .map(|r| r.unwrap())
@@ -182,7 +202,8 @@ fn test_read_lines_lossy_empty() {
 
 #[test]
 fn test_read_to_string_lossy_latin1() {
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let content = oneio::read_to_string_lossy(path.to_str().unwrap()).unwrap();
     assert!(content.contains('\u{FFFD}'));
     assert!(content.contains("valid"));
@@ -192,7 +213,8 @@ fn test_read_to_string_lossy_latin1() {
 #[test]
 fn test_read_to_string_lossy_valid_utf8() {
     let valid = b"hello\nworld\n";
-    let path = write_temp(valid);
+    let file = TempFile::new(valid);
+    let path = file.path().clone();
     let lossy = oneio::read_to_string_lossy(path.to_str().unwrap()).unwrap();
     #[allow(deprecated)]
     let strict = oneio::read_to_string(path.to_str().unwrap()).unwrap();
@@ -201,14 +223,16 @@ fn test_read_to_string_lossy_valid_utf8() {
 
 #[test]
 fn test_read_to_bytes_roundtrip() {
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let bytes = oneio::read_to_bytes(path.to_str().unwrap()).unwrap();
     assert_eq!(bytes, LATIN1_BYTES);
 }
 
 #[test]
 fn test_read_to_bytes_empty() {
-    let path = write_temp(EMPTY_BYTES);
+    let file = TempFile::new(EMPTY_BYTES);
+    let path = file.path().clone();
     let bytes = oneio::read_to_bytes(path.to_str().unwrap()).unwrap();
     assert!(bytes.is_empty());
 }
@@ -216,7 +240,8 @@ fn test_read_to_bytes_empty() {
 #[test]
 fn test_client_read_lines_lossy() {
     let client = oneio::OneIo::new().unwrap();
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let lines: Vec<String> = client
         .read_lines_lossy(path.to_str().unwrap())
         .unwrap()
@@ -229,7 +254,8 @@ fn test_client_read_lines_lossy() {
 #[test]
 fn test_client_to_lines_lossy() {
     let client = oneio::OneIo::new().unwrap();
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let reader = client.get_reader(path.to_str().unwrap()).unwrap();
     let lines: Vec<String> = client.to_lines_lossy(reader).map(|r| r.unwrap()).collect();
     assert_eq!(lines.len(), 3);
@@ -239,7 +265,8 @@ fn test_client_to_lines_lossy() {
 #[test]
 fn test_client_read_to_bytes() {
     let client = oneio::OneIo::new().unwrap();
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let bytes = client.read_to_bytes(path.to_str().unwrap()).unwrap();
     assert_eq!(bytes, LATIN1_BYTES);
 }
@@ -251,7 +278,8 @@ fn test_client_read_to_bytes() {
 #[test]
 #[allow(deprecated)]
 fn test_read_lines_strict_still_fails() {
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let mut lines = oneio::read_lines(path.to_str().unwrap()).unwrap();
     assert_eq!(lines.next().unwrap().unwrap(), "valid");
     let second = lines.next().unwrap();
@@ -264,7 +292,8 @@ fn test_read_lines_strict_still_fails() {
 #[test]
 #[allow(deprecated)]
 fn test_read_to_string_strict_still_fails() {
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let result = oneio::read_to_string(path.to_str().unwrap());
     assert!(
         result.is_err(),
@@ -279,7 +308,8 @@ fn test_read_to_string_strict_still_fails() {
 #[test]
 fn test_lines_with_embedded_nul() {
     let bytes = b"hello\x00world\n";
-    let path = write_temp(bytes);
+    let file = TempFile::new(bytes);
+    let path = file.path().clone();
     let lines: Vec<String> = oneio::read_lines_lossy(path.to_str().unwrap())
         .unwrap()
         .map(|r| r.unwrap())
@@ -291,7 +321,8 @@ fn test_lines_with_embedded_nul() {
 #[test]
 fn test_send_trait() {
     let client = oneio::OneIo::new().unwrap();
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let lines = client.read_lines_lossy(path.to_str().unwrap()).unwrap();
     // Move to another thread — should compile if Send
     let handle = std::thread::spawn(move || {
@@ -304,7 +335,8 @@ fn test_send_trait() {
 #[test]
 fn test_no_leak_on_early_drop() {
     let client = oneio::OneIo::new().unwrap();
-    let path = write_temp(LATIN1_BYTES);
+    let file = TempFile::new(LATIN1_BYTES);
+    let path = file.path().clone();
     let mut lines = client.read_lines_lossy(path.to_str().unwrap()).unwrap();
     // Read only first line, then drop
     assert_eq!(lines.next().unwrap().unwrap(), "valid");
