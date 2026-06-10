@@ -87,7 +87,15 @@ impl OneIo {
         let raw_reader: Box<dyn Read + Send> = match crate::get_protocol(path) {
             Some(protocol) => match protocol {
                 #[cfg(feature = "http")]
-                "http" | "https" => Box::new(self.get_http_reader_raw(path)?),
+                #[cfg(feature = "http")]
+                "http" | "https" => {
+                    let response = self.get_http_reader_raw(path)?;
+                    Box::new(crate::resumable_http::ResumableHttpReader::new(
+                        self.http_client().clone(),
+                        path.to_string(),
+                        response,
+                    ))
+                }
                 #[cfg(feature = "ftp")]
                 "ftp" => remote::get_ftp_reader_raw(path)?,
                 #[cfg(feature = "s3")]
