@@ -326,6 +326,7 @@ impl OneIo {
                     response,
                 );
                 std::io::copy(&mut reader, &mut writer)?;
+                writer.flush()?;
                 Ok(())
             }
             #[cfg(feature = "ftp")]
