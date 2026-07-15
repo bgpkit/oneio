@@ -319,8 +319,13 @@ impl OneIo {
             #[cfg(feature = "http")]
             Some("http" | "https") => {
                 let mut writer = self.get_writer_raw(local_path)?;
-                let mut response = self.get_http_reader_raw(remote_path)?;
-                response.copy_to(&mut writer)?;
+                let response = self.get_http_reader_raw(remote_path)?;
+                let mut reader = crate::resumable_http::ResumableHttpReader::new(
+                    self.http_client().clone(),
+                    remote_path.to_string(),
+                    response,
+                );
+                std::io::copy(&mut reader, &mut writer)?;
                 Ok(())
             }
             #[cfg(feature = "ftp")]

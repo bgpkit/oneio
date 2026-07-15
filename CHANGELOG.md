@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Remote HTTP(S) reads now resume automatically via Range requests: if the connection is dropped mid-download, the reader reconnects and continues from the last byte read instead of failing. Resumed responses are validated (`Content-Range` start offset, and `Last-Modified` when the original response provided it) to avoid splicing mismatched data.
+- Remote HTTP(S) reads and downloads now resume automatically via Range requests: if the connection is dropped mid-transfer, the reader reconnects and continues from the last byte read instead of failing. Applies to both streaming readers (`get_reader`/`get_reader_raw`) and `download`/`download_with_retry`. Resumed responses are validated (`Content-Range` start offset, and `Last-Modified` when the original response provided it) to avoid splicing mismatched data.
 
 ## v0.23.0 -- 2026-05-12
 

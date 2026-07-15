@@ -547,4 +547,41 @@ mod test {
             MAX_RETRIES as usize
         );
     }
+
+    // Check `download()` resumes when the server drops the connection mid-body,
+    // so the file written to disk contains the complete content. This exercises
+    // the resumable wiring through the download path (not just a direct reader).
+    #[test]
+    fn download_resumes_after_drop() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let url = format!("http://127.0.0.1:{}/data.txt", port);
+
+        let handle = thread::spawn(move || {
+            let (mut stream1, _) = listener.accept().unwrap();
+            read_request(&mut stream1);
+
+            let response_part1 = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\n\r\n12345";
+            stream1.write_all(response_part1.as_bytes()).unwrap();
+            drop(stream1);
+
+            let (mut stream2, _) = listener.accept().unwrap();
+            let req = read_request(&mut stream2);
+            assert!(req.contains("range: bytes=5-"));
+
+            let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 5-9/10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\n\r\n67890";
+            stream2.write_all(response_part2.as_bytes()).unwrap();
+        });
+
+        let local_path = std::env::temp_dir().join(format!("oneio_download_resume_{}.txt", port));
+        let local = local_path.to_str().unwrap();
+
+        crate::OneIo::new().unwrap().download(&url, local).unwrap();
+
+        let content = std::fs::read_to_string(&local_path).unwrap();
+        let _ = std::fs::remove_file(&local_path);
+
+        assert_eq!(content.as_str(), "1234567890");
+        handle.join().unwrap();
+    }
 }
