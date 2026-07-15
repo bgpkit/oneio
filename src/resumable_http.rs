@@ -274,7 +274,7 @@ mod test {
 
             let (mut stream2, _) = listener.accept().unwrap();
             let req = read_request(&mut stream2);
-            assert!(req.contains("range: bytes=5-"));
+            assert!(req.to_ascii_lowercase().contains("range: bytes=5-"));
 
             let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 5-9/10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\n\r\n67890";
             stream2.write_all(response_part2.as_bytes()).unwrap();
@@ -344,7 +344,7 @@ mod test {
             // server reports 416 which the reader must treat as a clean EOF.
             let (mut stream2, _) = listener.accept().unwrap();
             let req = read_request(&mut stream2);
-            assert!(req.contains("range: bytes=10-"));
+            assert!(req.to_ascii_lowercase().contains("range: bytes=10-"));
 
             let response_part2 = "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\n\r\n";
             stream2.write_all(response_part2.as_bytes()).unwrap();
@@ -378,7 +378,7 @@ mod test {
 
             let (mut stream2, _) = listener.accept().unwrap();
             let req = read_request(&mut stream2);
-            assert!(req.contains("range: bytes=5-"));
+            assert!(req.to_ascii_lowercase().contains("range: bytes=5-"));
 
             let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 5-9/10\r\nLast-Modified: Tue, 15 Nov 1995 12:45:26 GMT\r\n\r\n67890";
             stream2.write_all(response_part2.as_bytes()).unwrap();
@@ -413,7 +413,7 @@ mod test {
 
             let (mut stream2, _) = listener.accept().unwrap();
             let req = read_request(&mut stream2);
-            assert!(req.contains("range: bytes=5-"));
+            assert!(req.to_ascii_lowercase().contains("range: bytes=5-"));
 
             // The resumed response omits the Last-Modified header entirely.
             let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 5-9/10\r\n\r\n67890";
@@ -568,7 +568,7 @@ mod test {
 
             let (mut stream2, _) = listener.accept().unwrap();
             let req = read_request(&mut stream2);
-            assert!(req.contains("range: bytes=5-"));
+            assert!(req.to_ascii_lowercase().contains("range: bytes=5-"));
 
             let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 5-9/10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\n\r\n67890";
             stream2.write_all(response_part2.as_bytes()).unwrap();
