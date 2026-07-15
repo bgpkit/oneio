@@ -27,7 +27,7 @@ const BASE_RETRY_DELAY_MS: u64 = 1;
 /// `None` if the value is not in the expected form.
 fn parse_content_range_start(value: &str) -> Option<u64> {
     // "bytes 5-9/10" -> "5-9/10" -> "5"
-    let range = value.split_once(' ')?.1;
+    let range = value.strip_prefix("bytes ")?;
     let start = range.split_once('-')?.0;
     start.trim().parse().ok()
 }
