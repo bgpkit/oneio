@@ -75,19 +75,20 @@ impl ResumableHttpReader {
     /// `Content-Range`, or a start offset that does not match the request),
     /// since continuing to read would corrupt the stream.
     fn resume(&mut self) -> io::Result<Resume> {
-        for attempt in 1..=MAX_RETRIES {
-            let backoff_ms = BASE_RETRY_DELAY_MS.saturating_mul(1u64 << attempt.min(4));
-            std::thread::sleep(std::time::Duration::from_millis(backoff_ms));
-
+        for attempt in 0..MAX_RETRIES {
             let resp = match self
                 .client
                 .get(&self.url)
-                .header("Range", format!("bytes={}-", self.offset))
+                .header(reqwest::header::RANGE, format!("bytes={}-", self.offset))
                 .send()
             {
                 Ok(resp) => resp,
                 // Couldn't reach the server — back off and try again.
-                Err(_) => continue,
+                Err(_) => {
+                    let backoff_ms = BASE_RETRY_DELAY_MS.saturating_mul(1u64 << attempt.min(4));
+                    std::thread::sleep(std::time::Duration::from_millis(backoff_ms));
+                    continue;
+                }
             };
 
             return match resp.status() {
