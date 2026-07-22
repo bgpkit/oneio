@@ -66,6 +66,122 @@ const COPY_SOURCE_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b'^')
     .add(b'`');
 
+const S3_QUERY_ENCODE_SET: &AsciiSet = &COPY_SOURCE_ENCODE_SET.add(b'/');
+
+fn uses_path_style(config: &config::S3Config) -> bool {
+    !config.endpoint.contains("amazonaws.com") || config.bucket.contains('.')
+}
+
+fn path_style_object_url(
+    config: &config::S3Config,
+    encoded_object_path: &str,
+) -> Result<reqwest::Url, OneIoError> {
+    format!(
+        "{}/{bucket}/{encoded_object_path}",
+        config.endpoint,
+        bucket = config.bucket
+    )
+    .parse()
+    .map_err(|e| OneIoError::NotSupported(format!("Invalid S3 endpoint: {e}")))
+}
+
+/// Restore a path-style bucket component lost by rusty-s3 for leading-slash keys.
+///
+/// rusty-s3 resolves object keys with `Url::join()`. A leading slash therefore
+/// replaces the path-style bucket component before the action is signed. Rebuild
+/// the object path and re-sign the presigned request with the original action
+/// query parameters.
+fn repair_leading_slash_action_url(
+    mut url: reqwest::Url,
+    config: &config::S3Config,
+    key: &str,
+    method: &str,
+) -> Result<reqwest::Url, OneIoError> {
+    if !key.starts_with('/') || !uses_path_style(config) {
+        return Ok(url);
+    }
+
+    let encoded_object_path = url.path().to_string();
+    let action_query = url.query().map(str::to_owned);
+    url = path_style_object_url(config, &encoded_object_path)?;
+    url.set_query(action_query.as_deref());
+
+    let mut query: Vec<(String, String)> = url
+        .query_pairs()
+        .filter(|(name, _)| name != "X-Amz-Signature")
+        .map(|(name, value)| (name.into_owned(), value.into_owned()))
+        .collect();
+    query.sort_unstable();
+
+    let datetime = query
+        .iter()
+        .find(|(name, _)| name == "X-Amz-Date")
+        .map(|(_, value)| value.as_str())
+        .ok_or_else(|| OneIoError::NotSupported("Missing X-Amz-Date in S3 action".to_string()))?;
+    let datestamp = datetime
+        .get(..8)
+        .ok_or_else(|| OneIoError::NotSupported("Malformed X-Amz-Date in S3 action".to_string()))?;
+
+    let default_port = match url.scheme() {
+        "https" => 443,
+        "http" => 80,
+        _ => 0,
+    };
+    let host = match url.port() {
+        Some(port) if port != default_port => format!(
+            "{}:{port}",
+            url.host_str()
+                .ok_or_else(|| OneIoError::NotSupported("Invalid URL: no host".to_string()))?
+        ),
+        _ => url
+            .host_str()
+            .ok_or_else(|| OneIoError::NotSupported("Invalid URL: no host".to_string()))?
+            .to_string(),
+    };
+
+    let canonical_query = query
+        .iter()
+        .map(|(name, value)| {
+            format!(
+                "{}={}",
+                utf8_percent_encode(name, S3_QUERY_ENCODE_SET),
+                utf8_percent_encode(value, S3_QUERY_ENCODE_SET)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    let canonical_request = format!(
+        "{method}\n{}\n{canonical_query}\nhost:{host}\n\nhost\nUNSIGNED-PAYLOAD",
+        url.path()
+    );
+    let credential_scope = format!("{datestamp}/{}/s3/aws4_request", config.region);
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{datetime}\n{credential_scope}\n{}",
+        hex::encode(Sha256::digest(canonical_request.as_bytes()))
+    );
+    let signing_key = derive_signing_key(&config.credentials.secret_key, datestamp, &config.region);
+    let signature = hex::encode(hmac_sha256(&signing_key, string_to_sign.as_bytes()));
+
+    url.set_query(Some(&format!(
+        "{canonical_query}&X-Amz-Signature={signature}"
+    )));
+
+    Ok(url)
+}
+
+fn s3_object_url(config: &config::S3Config, key: &str) -> Result<reqwest::Url, OneIoError> {
+    let url = config
+        .rusty_bucket()?
+        .object_url(key)
+        .map_err(|e| OneIoError::NotSupported(format!("Invalid object key: {e}")))?;
+
+    if key.starts_with('/') && uses_path_style(config) {
+        path_style_object_url(config, url.path())
+    } else {
+        Ok(url)
+    }
+}
+
 // Shared HTTP client for S3 operations
 static S3_HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
 
@@ -163,7 +279,7 @@ pub fn s3_reader(bucket: &str, key: &str) -> Result<Box<dyn Read + Send>, OneIoE
     let bucket = config.rusty_bucket()?;
     let creds = config.rusty_credentials();
     let action = bucket.get_object(Some(&creds), key);
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), &config, key, "GET")?;
     let response = ensure_s3_success(get_s3_client().get(url).send()?)?;
     Ok(Box::new(response))
 }
@@ -204,7 +320,7 @@ fn upload_single(config: &config::S3Config, key: &str, file_path: &str) -> Resul
 
     let file = std::fs::File::open(file_path)?;
     let action = bucket.put_object(Some(&creds), key);
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
     ensure_s3_success(get_s3_client().put(url).body(file).send()?)?;
     Ok(())
 }
@@ -237,7 +353,7 @@ fn upload_multipart(
 
     // 1. Initiate multipart upload
     let action = bucket.create_multipart_upload(Some(&creds), key);
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "POST")?;
     let response = ensure_s3_success(get_s3_client().post(url).send()?)?;
     let init_response =
         rusty_s3::actions::CreateMultipartUpload::parse_response(response.text()?.as_bytes())
@@ -258,7 +374,7 @@ fn upload_multipart(
             }
 
             let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
-            let url = action.sign(config.ttl);
+            let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
             let response = ensure_s3_success(
                 get_s3_client()
                     .put(url)
@@ -278,7 +394,7 @@ fn upload_multipart(
     })();
 
     if let Err(e) = upload_result {
-        abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
+        abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
         return Err(e);
     }
 
@@ -289,7 +405,7 @@ fn upload_multipart(
         &upload_id,
         parts.iter().map(|s| s.as_str()),
     );
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "POST")?;
     let body = action.body();
     let response = match get_s3_client()
         .post(url)
@@ -299,7 +415,7 @@ fn upload_multipart(
     {
         Ok(response) => response,
         Err(e) => {
-            abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
+            abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
             return Err(e.into());
         }
     };
@@ -307,12 +423,12 @@ fn upload_multipart(
     // CompleteMultipartUpload can return 200 OK with an embedded <Error> body.
     // Validate HTTP status first, then parse the body to confirm success.
     if !response.status().is_success() {
-        abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
+        abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
         return Err(s3_error_from_response(response));
     }
     let complete_body = response.text().unwrap_or_default();
     if let Some(parsed) = parse_s3_error_xml(&complete_body) {
-        abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
+        abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
         return Err(map_parsed_s3_error(200, parsed));
     }
 
@@ -322,13 +438,15 @@ fn upload_multipart(
 fn abort_multipart_upload(
     bucket: &rusty_s3::Bucket,
     creds: &rusty_s3::Credentials,
+    config: &config::S3Config,
     key: &str,
     upload_id: &str,
-    ttl: Duration,
 ) {
     let action = bucket.abort_multipart_upload(Some(creds), key, upload_id);
-    let url = action.sign(ttl);
-    let _ = get_s3_client().delete(url).send();
+    if let Ok(url) = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "DELETE")
+    {
+        let _ = get_s3_client().delete(url).send();
+    }
 }
 
 /// Copies an object within the same S3 bucket.
@@ -346,12 +464,8 @@ fn abort_multipart_upload(
 /// multipart copy (not yet implemented).
 pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoError> {
     let config = config::S3Config::from_env(bucket)?;
-    let bucket_obj = config.rusty_bucket()?;
-
     // Get the base URL for the destination object
-    let url = bucket_obj
-        .object_url(dst_key)
-        .map_err(|e| OneIoError::NotSupported(format!("Invalid destination key: {e}")))?;
+    let url = s3_object_url(&config, dst_key)?;
     let url_str = url.as_str();
 
     // Extract host and path for signing, including non-default port
@@ -551,7 +665,7 @@ pub fn s3_delete(bucket: &str, key: &str) -> Result<(), OneIoError> {
     let bucket_obj = config.rusty_bucket()?;
     let creds = config.rusty_credentials();
     let action = bucket_obj.delete_object(Some(&creds), key);
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), &config, key, "DELETE")?;
     ensure_s3_success(get_s3_client().delete(url).send()?)?;
     Ok(())
 }
@@ -562,7 +676,7 @@ fn s3_head_object(bucket: &str, key: &str) -> Result<reqwest::blocking::Response
     let bucket_obj = config.rusty_bucket()?;
     let creds = config.rusty_credentials();
     let action = bucket_obj.head_object(Some(&creds), key);
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), &config, key, "HEAD")?;
     Ok(get_s3_client().head(url).send()?)
 }
 
@@ -804,6 +918,39 @@ fn parse_s3_error_xml(body: &str) -> Option<ParsedS3Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn path_style_test_config() -> config::S3Config {
+        config::S3Config {
+            bucket: "test-bucket".to_string(),
+            credentials: config::S3Credentials {
+                access_key: "test-access-key".to_string(),
+                secret_key: "test-secret-key".to_string(),
+                session_token: None,
+            },
+            endpoint: "https://s3.example.test/base".to_string(),
+            region: "us-east-1".to_string(),
+            ttl: Duration::from_secs(60),
+            multipart_chunk_size: 8 * 1024 * 1024,
+            multipart_threshold: 5 * 1024 * 1024,
+        }
+    }
+
+    #[test]
+    fn test_leading_slash_path_style_urls_preserve_bucket_and_key() {
+        let config = path_style_test_config();
+        let bucket = config.rusty_bucket().unwrap();
+        let creds = config.rusty_credentials();
+        let action = bucket.get_object(Some(&creds), "/folder/file name.txt");
+        let action_url = action.sign(config.ttl);
+
+        let repaired =
+            repair_leading_slash_action_url(action_url, &config, "/folder/file name.txt", "GET")
+                .unwrap();
+        assert_eq!(repaired.path(), "/base/test-bucket//folder/file%20name.txt");
+
+        let copy_url = s3_object_url(&config, "/folder/file name.txt").unwrap();
+        assert_eq!(copy_url.path(), "/base/test-bucket//folder/file%20name.txt");
+    }
 
     #[test]
     fn test_s3_url_parse() {
