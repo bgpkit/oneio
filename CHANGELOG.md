@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Bug fixes
+- Preserve leading-slash S3 object keys when using path-style endpoints such as Cloudflare R2.
+
 ## v0.23.0 -- 2026-05-12
 
 ### Added
