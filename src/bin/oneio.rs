@@ -148,7 +148,7 @@ fn download_with_progress(
                 "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] \
                  {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
             )?
-            .progress_chars(">-#"),
+            .progress_chars("#>-"),
     );
     pb.set_message(message.to_string());
     pb.enable_steady_tick(Duration::from_millis(100));
@@ -510,5 +510,84 @@ fn main() {
                 exit(1);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_lf_only() {
+        let data = b"hello\nworld\n";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 2);
+        assert_eq!(chars, 10); // "hello" + "world"
+    }
+
+    #[test]
+    fn test_crlf() {
+        let data = b"hello\r\nworld\r\n";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 2);
+        assert_eq!(chars, 10); // "hello" + "world"
+    }
+
+    #[test]
+    fn test_no_trailing_newline() {
+        let data = b"hello\nworld";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 2);
+        assert_eq!(chars, 10);
+    }
+
+    #[test]
+    fn test_empty_file() {
+        let data = b"";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 0);
+        assert_eq!(chars, 0);
+    }
+
+    #[test]
+    fn test_single_line_no_newline() {
+        let data = b"single";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 1);
+        assert_eq!(chars, 6);
+    }
+
+    #[test]
+    fn test_strict_utf8_rejects_invalid() {
+        let data = b"hello\xffworld\n";
+        assert!(compute_text_stats(&mut Cursor::new(data), true).is_err());
+    }
+
+    #[test]
+    fn test_lossy_accepts_invalid() {
+        let data = b"hello\xffworld\n";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 1);
+        assert_eq!(chars, 11); // "hello" + U+FFFD + "world" = 12, minus \n = 11
+    }
+
+    #[test]
+    fn test_crlf_across_chunk_boundary() {
+        // 65536-byte chunks — place \r at end of one chunk, \n at start of next
+        let mut data = vec![b'a'; 65535];
+        data.push(b'\r');
+        data.extend_from_slice(b"\nworld\n");
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 2);
+        assert_eq!(chars, 65535 + 5); // 'a's + "world"
+    }
+
+    #[test]
+    fn test_cr_without_lf_not_stripped() {
+        let data = b"hello\rworld\n";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 1);
+        assert_eq!(chars, 11); // "hello\rworld" = 11 chars
     }
 }
