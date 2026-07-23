@@ -114,6 +114,7 @@ jobs:
           cargo build --no-default-features --features http,rustls
           cargo build --no-default-features --features ftp,http,rustls
           cargo build --no-default-features --features s3,http,rustls
+          cargo build --no-default-features --features reqwest-gzip,rustls
 
       - name: Build CLI feature
         run: cargo build --no-default-features --features cli,http,gz,bz,rustls
@@ -136,6 +137,9 @@ jobs:
 
       - name: Test with no features
         run: cargo test --no-default-features
+
+      - name: Test reqwest-gzip feature
+        run: cargo test --no-default-features --features reqwest-gzip,rustls --test http_advanced_tests
 
       - name: Test documentation
         run: cargo test --doc --all-features

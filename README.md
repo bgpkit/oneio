@@ -61,6 +61,7 @@ oneio = { version = "0.23", features = ["async"] }
 - `https` - HTTP/HTTPS with rustls TLS backend (equivalent to `http` + `rustls`)
 - `ftp` - FTP support (requires `http` + TLS backend)
 - `s3` - S3-compatible storage
+- `reqwest-gzip` - Opt-in HTTP gzip content-encoding: advertises `Accept-Encoding: gzip` and transparently decodes gzipped responses (distinct from `gz`, which is URL-suffix-based file decompression)
 
 **TLS Backends** (for HTTPS - mutually exclusive):
 - `rustls` - Pure Rust TLS (use with `http`). Uses both system certificates and bundled Mozilla certificates for maximum compatibility.
@@ -160,7 +161,8 @@ The `OneIo` client allows you to configure headers, TLS certificates, timeouts, 
 
 ```rust
 use oneio::OneIo;
-use reqwest::header::{HeaderName, HeaderValue};
+// reqwest is re-exported for naming HTTP types without a direct reqwest dependency
+use oneio::reqwest::header::{HeaderName, HeaderValue};
 
 // Build a reusable client with custom headers and certificates
 let oneio = OneIo::builder()

@@ -79,6 +79,11 @@ https = ["http", "rustls"] # https needs http
 ftp = ["https", "suppaftp"] # ftp needs https
 s3 = ["rusty-s3", "http", "quick-xml", "percent-encoding", "dep:sha2", "dep:hmac", "dep:hex"]
 
+# HTTP content-encoding (opt-in, additive passthrough to reqwest)
+# Advertises `Accept-Encoding: gzip` and transparently decodes gzipped responses.
+# Distinct from the `gz` family below, which is URL-suffix-based file decompression.
+reqwest-gzip = ["http", "reqwest/gzip"]
+
 gz = ["gz-zlib-rs"]
 # internal feature to enable gzip support
 any_gz = []

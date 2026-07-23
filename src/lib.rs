@@ -33,6 +33,7 @@ Enable only what you need:
 | `xz` | XZ compression |
 | `zstd` | Zstandard compression |
 | `http` | HTTP/HTTPS support |
+| `reqwest-gzip` | Opt-in HTTP gzip content-encoding (advertises `Accept-Encoding: gzip`, transparently decodes responses) |
 | `ftp` | FTP support |
 | `s3` | S3-compatible storage |
 | `async` | Async I/O support |
@@ -240,6 +241,48 @@ mod progress;
 pub use builder::OneIoBuilder;
 pub use client::OneIo;
 pub use error::OneIoError;
+
+/// Re-export of the exact `reqwest` crate oneio is built against.
+///
+/// HTTP response types (e.g. [`OneIo::get_http_reader_raw`] returning
+/// `reqwest::blocking::Response`) appear in oneio's public API. This re-export
+/// lets downstream crates name those types (`oneio::reqwest::StatusCode`,
+/// `oneio::reqwest::header`, ...) without declaring their own reqwest
+/// dependency, avoiding version skew between the reqwest oneio uses and the
+/// reqwest a consumer imports.
+///
+/// Note: this makes reqwest part of oneio's public API contract; a reqwest
+/// major-version bump is a breaking oneio change.
+///
+/// # Example: conditional GET with HTTP validators
+///
+/// ```rust,no_run
+/// # #[cfg(feature = "http")]
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// use oneio::reqwest::StatusCode;
+/// use oneio::OneIo;
+///
+/// let client = OneIo::builder()
+///     .header_str("If-None-Match", "\"some-etag\"")
+///     .build()?;
+/// let response = client.get_http_reader_raw("https://example.com/data.json")?;
+/// if response.status() == StatusCode::NOT_MODIFIED {
+///     // cached copy is still current; skip re-processing
+/// } else {
+///     let etag = response
+///         .headers()
+///         .get("etag")
+///         .and_then(|v| v.to_str().ok())
+///         .map(String::from);
+///     // read `response` (implements `std::io::Read`) and store `etag`
+/// }
+/// # Ok(())
+/// # }
+/// # #[cfg(not(feature = "http"))]
+/// # fn main() {}
+/// ```
+#[cfg(feature = "http")]
+pub use reqwest;
 
 #[cfg(feature = "async")]
 pub mod async_reader;
