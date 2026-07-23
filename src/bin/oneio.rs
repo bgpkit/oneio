@@ -338,12 +338,13 @@ fn main() {
     };
 
     if cli.stats {
-        let mut count_lines = 0usize;
+        let mut count_newlines = 0usize;
         let mut count_chars = 0usize;
         let mut buf = [0u8; 65536];
         let mut carry: Vec<u8> = Vec::new();
         let mut combined: Vec<u8> = Vec::with_capacity(65536 + 4);
         let mut last_byte = b'\n'; // treat empty file as ending with \n
+        let mut file_offset = 0usize; // approx absolute byte position
 
         loop {
             let n = match reader.read(&mut buf) {
@@ -354,6 +355,8 @@ fn main() {
                     exit(1);
                 }
             };
+
+            file_offset += n;
 
             // Build combined buffer: prepend carry bytes from the
             // previous chunk (incomplete multi-byte UTF-8 sequence
@@ -369,7 +372,7 @@ fn main() {
                 match std::str::from_utf8(&data[pos..]) {
                     Ok(valid) => {
                         count_chars += valid.chars().count();
-                        count_lines += valid.as_bytes().iter().filter(|&&b| b == b'\n').count();
+                        count_newlines += valid.as_bytes().iter().filter(|&&b| b == b'\n').count();
                         if let Some(&b) = valid.as_bytes().last() {
                             last_byte = b;
                         }
@@ -382,7 +385,8 @@ fn main() {
                                 std::str::from_utf8_unchecked(&data[pos..pos + valid_up_to])
                             };
                             count_chars += valid.chars().count();
-                            count_lines += valid.as_bytes().iter().filter(|&&b| b == b'\n').count();
+                            count_newlines +=
+                                valid.as_bytes().iter().filter(|&&b| b == b'\n').count();
                             if let Some(&b) = valid.as_bytes().last() {
                                 last_byte = b;
                             }
@@ -391,12 +395,15 @@ fn main() {
                         if let Some(err_len) = e.error_len() {
                             // Genuinely invalid UTF-8 sequence
                             if cli.strict_utf8 {
-                                eprintln!("invalid UTF-8 at byte offset ~{} in {path}", pos);
+                                eprintln!(
+                                    "invalid UTF-8 at ~byte {} in {path}",
+                                    file_offset.saturating_sub(data.len().saturating_sub(pos))
+                                );
                                 exit(1);
                             }
                             count_chars += 1; // U+FFFD replacement
                             let seg = &data[pos..pos + err_len];
-                            count_lines += seg.iter().filter(|&&b| b == b'\n').count();
+                            count_newlines += seg.iter().filter(|&&b| b == b'\n').count();
                             if let Some(&b) = seg.last() {
                                 last_byte = b;
                             }
@@ -420,7 +427,7 @@ fn main() {
                 exit(1);
             }
             count_chars += 1; // U+FFFD for the truncated sequence
-            count_lines += carry.iter().filter(|&&b| b == b'\n').count();
+            count_newlines += carry.iter().filter(|&&b| b == b'\n').count();
             if let Some(&b) = carry.last() {
                 last_byte = b;
             }
@@ -428,9 +435,14 @@ fn main() {
 
         // Match BufReader::lines() semantics: a non-empty file that
         // doesn't end with \n still has one last (implicit) line.
+        let mut count_lines = count_newlines;
         if last_byte != b'\n' {
             count_lines += 1;
         }
+
+        // Match BufReader::lines() semantics: newline characters are
+        // stripped from line strings, so old stats never counted them.
+        count_chars = count_chars.saturating_sub(count_newlines);
 
         println!("lines: \t {count_lines}");
         println!("chars: \t {count_chars}");
@@ -439,8 +451,7 @@ fn main() {
         // without line-based buffering. Avoids buffering multi-GB single-line
         // JSON files in memory.
         if cli.strict_utf8 {
-            eprintln!("--strict-utf8 has no effect outside --stats mode; use --stats --strict-utf8 to validate UTF-8 content");
-            exit(1);
+            eprintln!("warning: --strict-utf8 has no effect outside --stats mode; use --stats --strict-utf8 to validate UTF-8 content");
         }
         let mut stdout = std::io::stdout();
         if let Err(e) = std::io::copy(&mut reader, &mut stdout) {
