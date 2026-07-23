@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::exit;
 use std::time::Duration;
@@ -329,7 +329,7 @@ fn main() {
         oneio.get_reader(path)
     };
 
-    let reader = match reader_result {
+    let mut reader = match reader_result {
         Ok(r) => r,
         Err(e) => {
             eprintln!("cannot open {path}: {e}");
@@ -337,39 +337,108 @@ fn main() {
         }
     };
 
-    let mut stdout = std::io::stdout();
-    let mut count_lines = 0usize;
-    let mut count_chars = 0usize;
+    if cli.stats {
+        let mut count_lines = 0usize;
+        let mut count_chars = 0usize;
+        let mut buf = [0u8; 65536];
+        let mut carry: Vec<u8> = Vec::new();
+        let mut last_byte = b'\n'; // treat empty file as ending with \n
 
-    let lines: Box<dyn Iterator<Item = std::io::Result<String>>> = if cli.strict_utf8 {
-        Box::new(BufReader::new(reader).lines())
+        loop {
+            let n = match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) => {
+                    eprintln!("read error on {path}: {e}");
+                    exit(1);
+                }
+            };
+
+            // Prepend carry bytes from the previous chunk (incomplete
+            // multi-byte UTF-8 sequence at end of last buffer).
+            let mut data: Vec<u8> = std::mem::take(&mut carry);
+            data.extend_from_slice(&buf[..n]);
+
+            let mut pos = 0;
+            while pos < data.len() {
+                match std::str::from_utf8(&data[pos..]) {
+                    Ok(valid) => {
+                        count_chars += valid.chars().count();
+                        count_lines += valid.as_bytes().iter().filter(|&&b| b == b'\n').count();
+                        if let Some(&b) = valid.as_bytes().last() {
+                            last_byte = b;
+                        }
+                        break; // consumed the rest of this chunk
+                    }
+                    Err(e) => {
+                        let valid_up_to = e.valid_up_to();
+                        if valid_up_to > 0 {
+                            let valid = unsafe {
+                                std::str::from_utf8_unchecked(&data[pos..pos + valid_up_to])
+                            };
+                            count_chars += valid.chars().count();
+                            count_lines += valid.as_bytes().iter().filter(|&&b| b == b'\n').count();
+                            if let Some(&b) = valid.as_bytes().last() {
+                                last_byte = b;
+                            }
+                            pos += valid_up_to;
+                        }
+                        if let Some(err_len) = e.error_len() {
+                            // Genuinely invalid UTF-8 sequence
+                            if cli.strict_utf8 {
+                                eprintln!("invalid UTF-8 at byte offset ~{} in {path}", pos);
+                                exit(1);
+                            }
+                            count_chars += 1; // U+FFFD replacement
+                            let seg = &data[pos..pos + err_len];
+                            count_lines += seg.iter().filter(|&&b| b == b'\n').count();
+                            if let Some(&b) = seg.last() {
+                                last_byte = b;
+                            }
+                            pos += err_len;
+                        } else {
+                            // Incomplete multi-byte sequence at buffer
+                            // end — carry to next chunk.
+                            carry.extend_from_slice(&data[pos..]);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle any trailing incomplete sequence at EOF the same way
+        // to_lines_lossy does: count one replacement character.
+        if !carry.is_empty() {
+            if cli.strict_utf8 {
+                eprintln!("incomplete UTF-8 sequence at end of {path}");
+                exit(1);
+            }
+            count_chars += 1; // U+FFFD for the truncated sequence
+            count_lines += carry.iter().filter(|&&b| b == b'\n').count();
+            if let Some(&b) = carry.last() {
+                last_byte = b;
+            }
+        }
+
+        // Match BufReader::lines() semantics: a non-empty file that
+        // doesn't end with \n still has one last (implicit) line.
+        if last_byte != b'\n' {
+            count_lines += 1;
+        }
+
+        println!("lines: \t {count_lines}");
+        println!("chars: \t {count_chars}");
     } else {
-        Box::new(oneio.to_lines_lossy(reader))
-    };
-
-    for line in lines {
-        let line = match line {
-            Ok(l) => l,
-            Err(e) => {
+        // Streaming mode: copy decompressed bytes directly to stdout
+        // without line-based buffering. Avoids buffering multi-GB single-line
+        // JSON files in memory.
+        let mut stdout = std::io::stdout();
+        if let Err(e) = std::io::copy(&mut reader, &mut stdout) {
+            if e.kind() != std::io::ErrorKind::BrokenPipe {
                 eprintln!("read error on {path}: {e}");
                 exit(1);
             }
-        };
-        if !cli.stats {
-            if let Err(e) = writeln!(stdout, "{line}") {
-                if e.kind() != std::io::ErrorKind::BrokenPipe {
-                    eprintln!("{e}");
-                    exit(1);
-                }
-                exit(0);
-            }
         }
-        count_chars += line.chars().count();
-        count_lines += 1;
-    }
-
-    if cli.stats {
-        println!("lines: \t {count_lines}");
-        println!("chars: \t {count_chars}");
     }
 }
