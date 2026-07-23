@@ -342,6 +342,7 @@ fn main() {
         let mut count_chars = 0usize;
         let mut buf = [0u8; 65536];
         let mut carry: Vec<u8> = Vec::new();
+        let mut combined: Vec<u8> = Vec::with_capacity(65536 + 4);
         let mut last_byte = b'\n'; // treat empty file as ending with \n
 
         loop {
@@ -354,10 +355,14 @@ fn main() {
                 }
             };
 
-            // Prepend carry bytes from the previous chunk (incomplete
-            // multi-byte UTF-8 sequence at end of last buffer).
-            let mut data: Vec<u8> = std::mem::take(&mut carry);
-            data.extend_from_slice(&buf[..n]);
+            // Build combined buffer: prepend carry bytes from the
+            // previous chunk (incomplete multi-byte UTF-8 sequence
+            // at end of last buffer), then the new data.
+            combined.clear();
+            combined.extend_from_slice(&carry);
+            carry.clear();
+            combined.extend_from_slice(&buf[..n]);
+            let data: &[u8] = &combined;
 
             let mut pos = 0;
             while pos < data.len() {
@@ -433,6 +438,10 @@ fn main() {
         // Streaming mode: copy decompressed bytes directly to stdout
         // without line-based buffering. Avoids buffering multi-GB single-line
         // JSON files in memory.
+        if cli.strict_utf8 {
+            eprintln!("--strict-utf8 has no effect outside --stats mode; use --stats --strict-utf8 to validate UTF-8 content");
+            exit(1);
+        }
         let mut stdout = std::io::stdout();
         if let Err(e) = std::io::copy(&mut reader, &mut stdout) {
             if e.kind() != std::io::ErrorKind::BrokenPipe {
