@@ -1,6 +1,6 @@
 # Spec: reqwest Re-export and Opt-in HTTP gzip
 
-**Status**: In Progress
+**Status**: Complete
 **Author**: Mingwei Zhang
 **Created**: 2026-07-22
 **Target Branch**: `dev/reqwest-reexport-http-gzip`
