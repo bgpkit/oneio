@@ -20,31 +20,31 @@ oneio = "0.22"  # Default: gz, bz, https
 
 **Local files only:**
 ```toml
-oneio = { version = "0.23", default-features = false, features = ["gz", "bz"] }
+oneio = { version = "0.24", default-features = false, features = ["gz", "bz"] }
 ```
 
 **HTTPS with default rustls**:
 ```toml
-oneio = { version = "0.23", default-features = false, features = ["https", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["https", "gz"] }
 ```
 
 **HTTPS with custom TLS backend**:
 ```toml
 # With rustls
-oneio = { version = "0.23", default-features = false, features = ["http", "rustls", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["http", "rustls", "gz"] }
 
 # With native-tls (recommended for corporate proxies/VPNs)
-oneio = { version = "0.23", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 **S3-compatible storage**:
 ```toml
-oneio = { version = "0.23", default-features = false, features = ["s3", "https", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["s3", "https", "gz"] }
 ```
 
 **Async operations**:
 ```toml
-oneio = { version = "0.23", features = ["async"] }
+oneio = { version = "0.24", features = ["async"] }
 ```
 
 ### Available Features
@@ -79,7 +79,7 @@ If you're behind a corporate proxy or VPN like Cloudflare WARP that uses custom 
 
 ```toml
 [dependencies]
-oneio = { version = "0.23", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 The `native-tls` feature uses your operating system's TLS stack with its trust store, which includes custom corporate certificates. This works for both HTTP/HTTPS and S3 operations.

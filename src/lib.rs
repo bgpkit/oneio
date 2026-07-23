@@ -44,13 +44,13 @@ Enable only what you need:
 **Example: Minimal setup for local files**
 ```toml
 [dependencies]
-oneio = { version = "0.23", default-features = false, features = ["gz"] }
+oneio = { version = "0.24", default-features = false, features = ["gz"] }
 ```
 
 **Example: HTTPS with custom TLS for corporate proxies**
 ```toml
 [dependencies]
-oneio = { version = "0.23", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 # Core API
