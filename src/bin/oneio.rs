@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::exit;
 use std::time::Duration;
@@ -51,7 +51,7 @@ struct Cli {
     #[clap(short, long)]
     stats: bool,
 
-    /// Add HTTP header in "Name: Value" format, can be repeated (e.g. -H "Authorization: Bearer TOKEN")
+    /// Add HTTP header in "Name: Value" format, can be repeated (e.g. -H "Authorization: Bearer ***")
     #[clap(short = 'H', long = "header", value_parser = clap::builder::ValueParser::new(parse_header))]
     headers: Vec<(String, String)>,
 
@@ -198,6 +198,154 @@ fn s3_credentials_or_exit() {
     }
 }
 
+/// Count newlines and CRLF pairs in a byte slice.
+///
+/// `prev_cr` is whether the previous byte (in a prior call) was `\r`,
+/// for detecting `\r\n` pairs that span call boundaries.
+fn count_eols(data: &[u8], prev_cr: bool) -> (usize, usize) {
+    let mut newlines = 0;
+    let mut crlf = 0;
+    let mut prev = prev_cr;
+    for &b in data {
+        if b == b'\n' {
+            newlines += 1;
+            if prev {
+                crlf += 1;
+            }
+        }
+        prev = b == b'\r';
+    }
+    (newlines, crlf)
+}
+
+/// Compute (lines, chars) from a byte stream using chunked scanning.
+///
+/// Matches `BufReader::lines()` semantics: line terminators (`\n` and
+/// `\r\n`) are excluded from the character count, and a non-empty file
+/// without a trailing newline still counts its last segment as a line.
+///
+/// When `strict_utf8` is true, returns `Err` on the first invalid UTF-8
+/// sequence or incomplete sequence at EOF.
+fn compute_text_stats(
+    reader: &mut (dyn Read + Send),
+    strict_utf8: bool,
+) -> Result<(usize, usize), String> {
+    let mut count_newlines = 0usize;
+    let mut count_crlf = 0usize;
+    let mut count_chars = 0usize;
+    let mut buf = [0u8; 65536];
+    let mut carry: Vec<u8> = Vec::new();
+    let mut combined: Vec<u8> = Vec::with_capacity(65536 + 4);
+    let mut last_byte = b'\n'; // treat empty file as ending with \n
+    let mut file_offset: u64 = 0; // approx absolute byte position for errors
+    let mut prev_was_cr = false; // for CRLF tracking across chunks
+
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) => return Err(format!("read error: {e}")),
+        };
+
+        file_offset += n as u64;
+
+        // Build combined buffer: prepend carry bytes from the
+        // previous chunk (incomplete multi-byte UTF-8 sequence
+        // at end of last buffer), then the new data.
+        combined.clear();
+        combined.extend_from_slice(&carry);
+        carry.clear();
+        combined.extend_from_slice(&buf[..n]);
+        let data: &[u8] = &combined;
+
+        let mut pos = 0;
+        while pos < data.len() {
+            match std::str::from_utf8(&data[pos..]) {
+                Ok(valid) => {
+                    count_chars += valid.chars().count();
+                    let (nl, cr) = count_eols(valid.as_bytes(), prev_was_cr);
+                    count_newlines += nl;
+                    count_crlf += cr;
+                    prev_was_cr = valid.as_bytes().last().is_some_and(|&b| b == b'\r');
+                    if let Some(&b) = valid.as_bytes().last() {
+                        last_byte = b;
+                    }
+                    break; // consumed the rest of this chunk
+                }
+                Err(e) => {
+                    let valid_up_to = e.valid_up_to();
+                    if valid_up_to > 0 {
+                        let valid = std::str::from_utf8(&data[pos..pos + valid_up_to])
+                            .expect("valid_up_to guarantees valid UTF-8");
+                        count_chars += valid.chars().count();
+                        let (nl, cr) = count_eols(valid.as_bytes(), prev_was_cr);
+                        count_newlines += nl;
+                        count_crlf += cr;
+                        prev_was_cr = valid.as_bytes().last().is_some_and(|&b| b == b'\r');
+                        if let Some(&b) = valid.as_bytes().last() {
+                            last_byte = b;
+                        }
+                        pos += valid_up_to;
+                    }
+                    if let Some(err_len) = e.error_len() {
+                        // Genuinely invalid UTF-8 sequence
+                        if strict_utf8 {
+                            return Err(format!(
+                                "invalid UTF-8 at ~byte {}",
+                                file_offset.saturating_sub((data.len().saturating_sub(pos)) as u64)
+                            ));
+                        }
+                        count_chars += 1; // U+FFFD replacement
+                        let seg = &data[pos..pos + err_len];
+                        let (nl, cr) = count_eols(seg, prev_was_cr);
+                        count_newlines += nl;
+                        count_crlf += cr;
+                        prev_was_cr = seg.last().is_some_and(|&b| b == b'\r');
+                        if let Some(&b) = seg.last() {
+                            last_byte = b;
+                        }
+                        pos += err_len;
+                    } else {
+                        // Incomplete multi-byte sequence at buffer
+                        // end — carry to next chunk.
+                        carry.extend_from_slice(&data[pos..]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Handle any trailing incomplete sequence at EOF the same way
+    // to_lines_lossy does: count one replacement character.
+    if !carry.is_empty() {
+        if strict_utf8 {
+            return Err("incomplete UTF-8 sequence at end of file".to_string());
+        }
+        count_chars += 1; // U+FFFD for the truncated sequence
+        let (nl, cr) = count_eols(&carry, prev_was_cr);
+        count_newlines += nl;
+        count_crlf += cr;
+        if let Some(&b) = carry.last() {
+            last_byte = b;
+        }
+    }
+
+    // Match BufReader::lines() semantics: a non-empty file that
+    // doesn't end with \n still has one last (implicit) line.
+    let mut count_lines = count_newlines;
+    if last_byte != b'\n' {
+        count_lines += 1;
+    }
+
+    // Match BufReader::lines() semantics: line terminators (\n and
+    // \r before \n) are stripped from line strings, so old stats
+    // never counted them.
+    count_chars = count_chars.saturating_sub(count_newlines + count_crlf);
+
+    Ok((count_lines, count_chars))
+}
+
 fn main() {
     let cli = Cli::parse();
     let outfile = cli.outfile;
@@ -329,7 +477,7 @@ fn main() {
         oneio.get_reader(path)
     };
 
-    let reader = match reader_result {
+    let mut reader = match reader_result {
         Ok(r) => r,
         Err(e) => {
             eprintln!("cannot open {path}: {e}");
@@ -337,39 +485,109 @@ fn main() {
         }
     };
 
-    let mut stdout = std::io::stdout();
-    let mut count_lines = 0usize;
-    let mut count_chars = 0usize;
-
-    let lines: Box<dyn Iterator<Item = std::io::Result<String>>> = if cli.strict_utf8 {
-        Box::new(BufReader::new(reader).lines())
-    } else {
-        Box::new(oneio.to_lines_lossy(reader))
-    };
-
-    for line in lines {
-        let line = match line {
-            Ok(l) => l,
-            Err(e) => {
-                eprintln!("read error on {path}: {e}");
+    if cli.stats {
+        match compute_text_stats(&mut reader, cli.strict_utf8) {
+            Ok((lines, chars)) => {
+                println!("lines: \t {lines}");
+                println!("chars: \t {chars}");
+            }
+            Err(msg) => {
+                eprintln!("{path}: {msg}");
                 exit(1);
             }
-        };
-        if !cli.stats {
-            if let Err(e) = writeln!(stdout, "{line}") {
-                if e.kind() != std::io::ErrorKind::BrokenPipe {
-                    eprintln!("{e}");
-                    exit(1);
-                }
-                exit(0);
+        }
+    } else {
+        // Streaming mode: copy decompressed bytes directly to stdout
+        // without line-based buffering. Avoids buffering multi-GB single-line
+        // JSON files in memory.
+        if cli.strict_utf8 {
+            eprintln!("warning: --strict-utf8 has no effect outside --stats mode; use --stats --strict-utf8 to validate UTF-8 content");
+        }
+        let mut stdout = std::io::stdout().lock();
+        if let Err(e) = std::io::copy(&mut reader, &mut stdout) {
+            if e.kind() != std::io::ErrorKind::BrokenPipe {
+                eprintln!("I/O error on {path}: {e}");
+                exit(1);
             }
         }
-        count_chars += line.chars().count();
-        count_lines += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_lf_only() {
+        let data = b"hello\nworld\n";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 2);
+        assert_eq!(chars, 10); // "hello" + "world"
     }
 
-    if cli.stats {
-        println!("lines: \t {count_lines}");
-        println!("chars: \t {count_chars}");
+    #[test]
+    fn test_crlf() {
+        let data = b"hello\r\nworld\r\n";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 2);
+        assert_eq!(chars, 10); // "hello" + "world"
+    }
+
+    #[test]
+    fn test_no_trailing_newline() {
+        let data = b"hello\nworld";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 2);
+        assert_eq!(chars, 10);
+    }
+
+    #[test]
+    fn test_empty_file() {
+        let data = b"";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 0);
+        assert_eq!(chars, 0);
+    }
+
+    #[test]
+    fn test_single_line_no_newline() {
+        let data = b"single";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 1);
+        assert_eq!(chars, 6);
+    }
+
+    #[test]
+    fn test_strict_utf8_rejects_invalid() {
+        let data = b"hello\xffworld\n";
+        assert!(compute_text_stats(&mut Cursor::new(data), true).is_err());
+    }
+
+    #[test]
+    fn test_lossy_accepts_invalid() {
+        let data = b"hello\xffworld\n";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 1);
+        assert_eq!(chars, 11); // "hello" + U+FFFD + "world" = 12, minus \n = 11
+    }
+
+    #[test]
+    fn test_crlf_across_chunk_boundary() {
+        // 65536-byte chunks — place \r at end of one chunk, \n at start of next
+        let mut data = vec![b'a'; 65535];
+        data.push(b'\r');
+        data.extend_from_slice(b"\nworld\n");
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 2);
+        assert_eq!(chars, 65535 + 5); // 'a's + "world"
+    }
+
+    #[test]
+    fn test_cr_without_lf_not_stripped() {
+        let data = b"hello\rworld\n";
+        let (lines, chars) = compute_text_stats(&mut Cursor::new(data), false).unwrap();
+        assert_eq!(lines, 1);
+        assert_eq!(chars, 11); // "hello\rworld" = 11 chars
     }
 }

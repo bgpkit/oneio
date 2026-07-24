@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- CLI no longer buffers multi-GB single-line files into memory before output. Default mode now streams decompressed bytes directly to stdout via `io::copy` instead of line-by-line reading. `--stats` mode uses byte-chunk scanning to count lines and characters without building full-line `String` allocations.
+  - **Behavior change**: the default mode now outputs raw decompressed bytes with no UTF-8 decoding or line-based rewriting. This means `--strict-utf8` has no effect outside `--stats` mode (it issues a warning and continues), and files without a trailing newline are no longer rewritten to add one.
+
 ## v0.24.0 -- 2026-07-22
 
 ### Bug fixes
