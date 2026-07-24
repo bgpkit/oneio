@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## v0.24.1 -- 2026-07-23
 
 ### Fixed
 - CLI no longer buffers multi-GB single-line files into memory before output. Default mode now streams decompressed bytes directly to stdout via `io::copy` instead of line-by-line reading. `--stats` mode uses byte-chunk scanning to count lines and characters without building full-line `String` allocations.
