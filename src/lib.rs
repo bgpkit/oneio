@@ -237,6 +237,8 @@ mod client;
 mod compression;
 mod error;
 mod progress;
+#[cfg(feature = "http")]
+mod resumable_http;
 
 pub use builder::OneIoBuilder;
 pub use client::OneIo;

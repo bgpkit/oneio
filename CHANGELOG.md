@@ -17,6 +17,9 @@ All notable changes to this project will be documented in this file.
 - Re-exported `reqwest` as `oneio::reqwest` (under the `http` feature) so downstream crates can name HTTP types (`StatusCode`, `header`, `blocking::Response`) without declaring their own reqwest dependency and risking version skew. Note: this makes reqwest part of oneio's public API contract; a reqwest major-version bump is a breaking oneio change.
 - New opt-in `reqwest-gzip` feature: advertises `Accept-Encoding: gzip` and transparently decodes `Content-Encoding: gzip` responses (e.g. ~97 MB to ~4.6 MB for `rpki.cloudflare.com/rpki.json`). Distinct from the `gz` family, which is URL-suffix-based file decompression. Off by default; no dependency-tree change unless enabled.
 
+### Added
+- Remote HTTP(S) reads and downloads now resume automatically via Range requests: if the connection is dropped mid-transfer, the reader reconnects and continues from the last byte read instead of failing. Applies to both streaming readers (`get_reader`/`get_reader_raw`) and `download`/`download_with_retry`. Resumed responses are validated (`Content-Range` start offset, and `Last-Modified` when the original response provided it) to avoid splicing mismatched data.
+
 ## v0.23.0 -- 2026-05-12
 
 ### Added
