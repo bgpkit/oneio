@@ -18,8 +18,9 @@ fn test_large_multipart_upload() {
     let _ = dotenvy::dotenv();
 
     let bucket = env::var("ONEIO_TEST_BUCKET").expect("ONEIO_TEST_BUCKET not set");
-    let test_file =
-        env::var("ONEIO_S3_TEST_FILE").unwrap_or_else(|_| "/tmp/test_upload_large.bin".to_string());
+    let default_test_file = std::env::temp_dir().join("test_upload_large.bin");
+    let test_file = env::var("ONEIO_S3_TEST_FILE")
+        .unwrap_or_else(|_| default_test_file.to_string_lossy().into_owned());
 
     let metadata = fs::metadata(&test_file).unwrap_or_else(|e| {
         panic!("Test file {test_file} not accessible: {e}. Set ONEIO_S3_TEST_FILE or create {test_file}");
@@ -66,6 +67,7 @@ fn test_large_multipart_upload() {
                 println!("  └── {s}");
                 source = std::error::Error::source(s);
             }
+            let _ = oneio::s3_delete(&bucket, &key);
             panic!("Upload failed: {e}");
         }
     }

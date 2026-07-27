@@ -75,10 +75,6 @@ pub struct S3Config {
     pub multipart_chunk_size: u64,
     /// Multipart threshold in bytes (default: 5MB).
     pub multipart_threshold: u64,
-    /// Number of retry attempts after the initial S3 request (default: 3).
-    pub max_retries: u32,
-    /// Initial retry backoff in milliseconds (default: 1000ms; doubles after each retry).
-    pub retry_backoff_ms: u64,
 }
 
 impl fmt::Debug for S3Config {
@@ -91,8 +87,6 @@ impl fmt::Debug for S3Config {
             .field("ttl", &self.ttl)
             .field("multipart_chunk_size", &self.multipart_chunk_size)
             .field("multipart_threshold", &self.multipart_threshold)
-            .field("max_retries", &self.max_retries)
-            .field("retry_backoff_ms", &self.retry_backoff_ms)
             .finish()
     }
 }
@@ -131,16 +125,6 @@ impl S3Config {
             .and_then(|s| s.parse().ok())
             .unwrap_or(DEFAULT_THRESHOLD);
 
-        // Retry configuration for transient transport errors
-        let max_retries = std::env::var("ONEIO_S3_MAX_RETRIES")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(3);
-        let retry_backoff_ms = std::env::var("ONEIO_S3_RETRY_BACKOFF_MS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1000);
-
         Ok(S3Config {
             bucket: bucket.to_string(),
             credentials,
@@ -149,8 +133,6 @@ impl S3Config {
             ttl: std::time::Duration::from_secs(3600),
             multipart_chunk_size,
             multipart_threshold,
-            max_retries,
-            retry_backoff_ms,
         })
     }
 

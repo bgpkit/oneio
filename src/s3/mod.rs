@@ -343,6 +343,18 @@ fn calculate_chunk_size(file_size: u64, requested_chunk_size: u64) -> (u64, usiz
     (chunk_size, total_parts)
 }
 
+fn s3_retry_config() -> (u32, u64) {
+    let max_retries = std::env::var("ONEIO_S3_MAX_RETRIES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(3);
+    let retry_backoff_ms = std::env::var("ONEIO_S3_RETRY_BACKOFF_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1000);
+    (max_retries, retry_backoff_ms)
+}
+
 /// Execute an S3 request with retry on transient transport errors.
 ///
 /// S3-compatible services (especially Cloudflare R2) occasionally reset
@@ -352,12 +364,11 @@ fn calculate_chunk_size(file_size: u64, requested_chunk_size: u64) -> (u64, usiz
 /// errors (connection reset, timeout) with exponential backoff. HTTP status
 /// errors (4xx/5xx) are returned immediately without retry — they arrive
 /// as `Response`, not `Error`, and are handled by the caller.
-fn send_with_retry<F>(request: F, config: &config::S3Config) -> Result<Response, OneIoError>
+fn send_with_retry<F>(request: F) -> Result<Response, OneIoError>
 where
     F: Fn() -> Result<Response, reqwest::Error>,
 {
-    let max_retries = config.max_retries;
-    let mut backoff_ms = config.retry_backoff_ms;
+    let (max_retries, mut backoff_ms) = s3_retry_config();
 
     for _attempt in 0..=max_retries {
         match request() {
@@ -400,10 +411,8 @@ fn upload_part_with_retry(
     file: &mut std::fs::File,
     offset: u64,
     part_len: u64,
-    config: &config::S3Config,
 ) -> Result<Response, OneIoError> {
-    let max_retries = config.max_retries;
-    let mut backoff_ms = config.retry_backoff_ms;
+    let (max_retries, mut backoff_ms) = s3_retry_config();
 
     // First attempt: move the body, no clone.
     // Retry attempts: re-read from file at the recorded offset.
@@ -455,10 +464,9 @@ fn upload_multipart(
     // 1. Initiate multipart upload
     let action = bucket.create_multipart_upload(Some(&creds), key);
     let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "POST")?;
-    let response = ensure_s3_success(send_with_retry(
-        || get_s3_client().post(url.clone()).send(),
-        config,
-    )?)?;
+    let response = ensure_s3_success(send_with_retry(|| {
+        get_s3_client().post(url.clone()).send()
+    })?)?;
     let init_response =
         rusty_s3::actions::CreateMultipartUpload::parse_response(response.text()?.as_bytes())
             .map_err(|e| OneIoError::Network(Box::new(e)))?;
@@ -492,7 +500,6 @@ fn upload_multipart(
                 &mut file,
                 part_offset,
                 part_len,
-                config,
             )?)?;
 
             let etag = extract_etag(response.headers()).ok_or_else(|| {
@@ -517,16 +524,13 @@ fn upload_multipart(
     );
     let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "POST")?;
     let body = action.body();
-    let response = match send_with_retry(
-        || {
-            get_s3_client()
-                .post(url.clone())
-                .header("content-type", "application/xml")
-                .body(body.clone())
-                .send()
-        },
-        config,
-    ) {
+    let response = match send_with_retry(|| {
+        get_s3_client()
+            .post(url.clone())
+            .header("content-type", "application/xml")
+            .body(body.clone())
+            .send()
+    }) {
         Ok(response) => response,
         Err(e) => {
             abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
@@ -1046,8 +1050,6 @@ mod tests {
             ttl: Duration::from_secs(60),
             multipart_chunk_size: 8 * 1024 * 1024,
             multipart_threshold: 5 * 1024 * 1024,
-            max_retries: 3,
-            retry_backoff_ms: 1000,
         }
     }
 

@@ -9,9 +9,8 @@ All notable changes to this project will be documented in this file.
 - Added a 300-second overall request timeout to the S3 HTTP client (previously only connect timeout was set).
 
 ### Added
-- `ONEIO_S3_MAX_RETRIES` environment variable to configure max retry attempts for transient S3 transport errors (default: 3).
+- `ONEIO_S3_MAX_RETRIES` environment variable to configure retry attempts after the initial request for transient S3 transport errors (default: 3).
 - `ONEIO_S3_RETRY_BACKOFF_MS` environment variable to configure initial retry backoff in milliseconds (default: 1000, doubles each attempt).
-- `max_retries` and `retry_backoff_ms` fields on `S3Config`.
 
 ## v0.24.1 -- 2026-07-23
 
