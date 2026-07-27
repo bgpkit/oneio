@@ -32,7 +32,7 @@ use quick_xml::{events::Event, Reader};
 use reqwest::blocking::Response;
 use rusty_s3::S3Action;
 use sha2::{Digest, Sha256};
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -370,7 +370,7 @@ where
                     backoff_ms
                 );
                 std::thread::sleep(Duration::from_millis(backoff_ms));
-                backoff_ms *= 2;
+                backoff_ms = backoff_ms.saturating_mul(2);
             }
             Err(e) => return Err(e.into()),
         }
@@ -392,6 +392,56 @@ fn is_retryable_error(err: &reqwest::Error) -> bool {
         return true;
     }
     false
+}
+
+/// Upload a single multipart part with retry, avoiding unnecessary clones.
+///
+/// On the first attempt, `body` is moved into the request with zero copy.
+/// On retry (transient transport error), the part bytes are re-read from
+/// `file` at `offset` to reconstruct the request body. This avoids cloning
+/// the full chunk on every attempt — the happy path has no extra allocation.
+fn upload_part_with_retry(
+    url: &reqwest::Url,
+    body: Vec<u8>,
+    file: &mut std::fs::File,
+    offset: u64,
+    part_len: u64,
+    config: &config::S3Config,
+) -> Result<Response, OneIoError> {
+    let max_retries = config.max_retries;
+    let mut backoff_ms = config.retry_backoff_ms;
+
+    // First attempt: move the body, no clone.
+    // Retry attempts: re-read from file at the recorded offset.
+    let mut body = Some(body);
+
+    for attempt in 0..=max_retries {
+        let request_body = match body.take() {
+            Some(b) => b,
+            None => {
+                let mut buf = Vec::with_capacity(part_len as usize);
+                file.seek(SeekFrom::Start(offset))?;
+                file.by_ref().take(part_len).read_to_end(&mut buf)?;
+                buf
+            }
+        };
+
+        match get_s3_client().put(url.clone()).body(request_body).send() {
+            Ok(response) => return Ok(response),
+            Err(e) if attempt < max_retries && is_retryable_error(&e) => {
+                eprintln!(
+                    "oneio: S3 part upload failed (attempt {}/{}), retrying in {}ms: {e}",
+                    attempt + 1,
+                    max_retries + 1,
+                    backoff_ms
+                );
+                std::thread::sleep(Duration::from_millis(backoff_ms));
+                backoff_ms = backoff_ms.saturating_mul(2);
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    unreachable!()
 }
 
 fn upload_multipart(
@@ -433,13 +483,18 @@ fn upload_multipart(
             let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
             let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
             let part_data = std::mem::replace(&mut chunk, Vec::with_capacity(chunk_size as usize));
-            let response = ensure_s3_success(send_with_retry(
-                || {
-                    get_s3_client()
-                        .put(url.clone())
-                        .body(part_data.clone())
-                        .send()
-                },
+            let part_len = part_data.len() as u64;
+            let part_offset = file.stream_position()? - part_len;
+
+            // Upload this part with retry. On the first attempt, move the
+            // body to avoid cloning the full chunk. On retry (transient
+            // transport error), re-read the same bytes from the file.
+            let response = ensure_s3_success(upload_part_with_retry(
+                &url,
+                part_data,
+                &mut file,
+                part_offset,
+                part_len,
                 config,
             )?)?;
 
