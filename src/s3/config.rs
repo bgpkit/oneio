@@ -75,9 +75,9 @@ pub struct S3Config {
     pub multipart_chunk_size: u64,
     /// Multipart threshold in bytes (default: 5MB).
     pub multipart_threshold: u64,
-    /// Maximum retry attempts for transient S3 transport errors (default: 3).
+    /// Number of retry attempts after the initial S3 request (default: 3).
     pub max_retries: u32,
-    /// Initial backoff in milliseconds for S3 retry (default: 1000ms, doubles each attempt).
+    /// Initial retry backoff in milliseconds (default: 1000ms; doubles after each retry).
     pub retry_backoff_ms: u64,
 }
 

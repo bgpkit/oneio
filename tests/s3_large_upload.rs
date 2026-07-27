@@ -13,7 +13,7 @@ use std::fs;
 use std::time::Instant;
 
 #[test]
-#[ignore]
+#[ignore = "requires R2 credentials and a ~1 GB test file"]
 fn test_large_multipart_upload() {
     let _ = dotenvy::dotenv();
 
@@ -76,17 +76,25 @@ fn test_large_multipart_upload() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "requires R2 credentials"]
 fn test_small_upload_baseline() {
     let _ = dotenvy::dotenv();
 
     let bucket = env::var("ONEIO_TEST_BUCKET").expect("ONEIO_TEST_BUCKET not set");
 
-    // Create a small 1MB file (under 5MB multipart threshold)
-    let test_file = "/tmp/test_upload_small.bin";
+    // Create a small 1MB file (under 5MB multipart threshold).
+    let unique_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before Unix epoch")
+        .as_nanos();
+    let test_file = std::env::temp_dir().join(format!("oneio-small-upload-{unique_id}.bin"));
     let size = 1024 * 1024; // 1MB
     let data = vec![0x42u8; size];
-    fs::write(test_file, &data).expect("failed to write test file");
+    fs::write(&test_file, &data).expect("failed to write test file");
+
+    let test_file = test_file
+        .to_str()
+        .expect("temporary test file path must be valid UTF-8");
 
     let key = format!("test-small-upload/{}.bin", std::process::id());
     println!("Uploading 1MB file to s3://{bucket}/{key}");
