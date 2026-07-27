@@ -507,7 +507,15 @@ fn upload_multipart(
             let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
             let part_data = std::mem::replace(&mut chunk, Vec::with_capacity(chunk_size as usize));
             let part_len = part_data.len() as u64;
-            let part_offset = file.stream_position()? - part_len;
+            let part_offset = file
+                .stream_position()?
+                .checked_sub(part_len)
+                .ok_or_else(|| {
+                    OneIoError::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "multipart part offset exceeds file position",
+                    ))
+                })?;
 
             // Upload this part with retry. On the first attempt, move the
             // body to avoid cloning the full chunk. On retry (transient
