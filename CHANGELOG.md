@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Fixed
+- S3 multipart upload now retries individual parts on transient transport errors (connection reset, timeout) with exponential backoff. Previously, a single transient failure on any part aborted the entire upload, wasting all successfully uploaded parts. This caused large file backups (~1 GB) to fail intermittently on constrained network paths such as Railway to Cloudflare R2.
+- Added a 300-second overall request timeout to the S3 HTTP client (previously only connect timeout was set).
+
+### Added
+- `ONEIO_S3_MAX_RETRIES` environment variable to configure max retry attempts for transient S3 transport errors (default: 3).
+- `ONEIO_S3_RETRY_BACKOFF_MS` environment variable to configure initial retry backoff in milliseconds (default: 1000, doubles each attempt).
+- `max_retries` and `retry_backoff_ms` fields on `S3Config`.
+
 ## v0.24.1 -- 2026-07-23
 
 ### Fixed

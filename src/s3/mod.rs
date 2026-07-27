@@ -12,6 +12,8 @@
 //! - `AWS_SESSION_TOKEN` - Temporary session token
 //! - `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
 //! - `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
+//! - `ONEIO_S3_MAX_RETRIES` - Max retry attempts for transient transport errors (default: 3)
+//! - `ONEIO_S3_RETRY_BACKOFF_MS` - Initial retry backoff in ms, doubles each attempt (default: 1000)
 //!
 //! # Upload Behavior
 //!
@@ -192,8 +194,9 @@ fn get_s3_client() -> &'static reqwest::blocking::Client {
             eprintln!("Warning: failed to initialize rustls crypto provider: {e}");
         }
 
-        let mut builder =
-            reqwest::blocking::Client::builder().connect_timeout(Duration::from_secs(30));
+        let mut builder = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(300));
 
         #[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
         {
@@ -340,6 +343,57 @@ fn calculate_chunk_size(file_size: u64, requested_chunk_size: u64) -> (u64, usiz
     (chunk_size, total_parts)
 }
 
+/// Execute an S3 request with retry on transient transport errors.
+///
+/// S3-compatible services (especially Cloudflare R2) occasionally reset
+/// connections during large multipart uploads. Without retry, a single
+/// transient failure on any part aborts the entire multipart upload,
+/// wasting all successfully uploaded parts. This helper retries transport
+/// errors (connection reset, timeout) with exponential backoff. HTTP status
+/// errors (4xx/5xx) are returned immediately without retry — they arrive
+/// as `Response`, not `Error`, and are handled by the caller.
+fn send_with_retry<F>(request: F, config: &config::S3Config) -> Result<Response, OneIoError>
+where
+    F: Fn() -> Result<Response, reqwest::Error>,
+{
+    let max_retries = config.max_retries;
+    let mut backoff_ms = config.retry_backoff_ms;
+
+    for attempt in 0..=max_retries {
+        match request() {
+            Ok(response) => return Ok(response),
+            Err(e) if attempt < max_retries && is_retryable_error(&e) => {
+                eprintln!(
+                    "oneio: S3 request failed (attempt {}/{}), retrying in {}ms: {e}",
+                    attempt + 1,
+                    max_retries + 1,
+                    backoff_ms
+                );
+                std::thread::sleep(Duration::from_millis(backoff_ms));
+                backoff_ms *= 2;
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    unreachable!()
+}
+
+/// Determine if a reqwest error is likely transient and worth retrying.
+///
+/// Retryable: timeouts, connection resets, broken pipes, DNS failures.
+/// Non-retryable: invalid URLs, TLS errors, HTTP status errors (which
+/// arrive as `Response`, not `Error`).
+fn is_retryable_error(err: &reqwest::Error) -> bool {
+    if err.is_timeout() || err.is_connect() {
+        return true;
+    }
+    // Body decode errors (connection reset mid-stream) are transient
+    if err.is_body() || err.is_decode() {
+        return true;
+    }
+    false
+}
+
 fn upload_multipart(
     config: &config::S3Config,
     key: &str,
@@ -354,7 +408,10 @@ fn upload_multipart(
     // 1. Initiate multipart upload
     let action = bucket.create_multipart_upload(Some(&creds), key);
     let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "POST")?;
-    let response = ensure_s3_success(get_s3_client().post(url).send()?)?;
+    let response = ensure_s3_success(send_with_retry(
+        || get_s3_client().post(url.clone()).send(),
+        config,
+    )?)?;
     let init_response =
         rusty_s3::actions::CreateMultipartUpload::parse_response(response.text()?.as_bytes())
             .map_err(|e| OneIoError::Network(Box::new(e)))?;
@@ -375,15 +432,16 @@ fn upload_multipart(
 
             let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
             let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
-            let response = ensure_s3_success(
-                get_s3_client()
-                    .put(url)
-                    .body(std::mem::replace(
-                        &mut chunk,
-                        Vec::with_capacity(chunk_size as usize),
-                    ))
-                    .send()?,
-            )?;
+            let part_data = std::mem::replace(&mut chunk, Vec::with_capacity(chunk_size as usize));
+            let response = ensure_s3_success(send_with_retry(
+                || {
+                    get_s3_client()
+                        .put(url.clone())
+                        .body(part_data.clone())
+                        .send()
+                },
+                config,
+            )?)?;
 
             let etag = extract_etag(response.headers()).ok_or_else(|| {
                 OneIoError::NotSupported("Missing ETag in UploadPart response".into())
@@ -407,16 +465,20 @@ fn upload_multipart(
     );
     let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "POST")?;
     let body = action.body();
-    let response = match get_s3_client()
-        .post(url)
-        .header("content-type", "application/xml")
-        .body(body)
-        .send()
-    {
+    let response = match send_with_retry(
+        || {
+            get_s3_client()
+                .post(url.clone())
+                .header("content-type", "application/xml")
+                .body(body.clone())
+                .send()
+        },
+        config,
+    ) {
         Ok(response) => response,
         Err(e) => {
             abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
-            return Err(e.into());
+            return Err(e);
         }
     };
 
@@ -932,6 +994,8 @@ mod tests {
             ttl: Duration::from_secs(60),
             multipart_chunk_size: 8 * 1024 * 1024,
             multipart_threshold: 5 * 1024 * 1024,
+            max_retries: 3,
+            retry_backoff_ms: 1000,
         }
     }
 
