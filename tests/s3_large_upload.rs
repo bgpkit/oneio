@@ -9,7 +9,6 @@
 #![cfg(feature = "s3")]
 
 use std::env;
-use std::error::Error;
 use std::fs;
 use std::time::Instant;
 
@@ -66,10 +65,10 @@ fn test_large_multipart_upload() {
             println!("❌ Upload FAILED after {:.1}s", elapsed.as_secs_f64());
             println!("Error: {e}");
             println!("\nError chain:");
-            let mut source: Option<&dyn std::error::Error> = e.source();
+            let mut source: Option<&dyn std::error::Error> = std::error::Error::source(e);
             while let Some(s) = source {
                 println!("  └── {s}");
-                source = s.source();
+                source = std::error::Error::source(s);
             }
             panic!("Upload failed: {e}");
         }

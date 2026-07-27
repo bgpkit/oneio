@@ -422,6 +422,15 @@ fn upload_part_with_retry(
                 let mut buf = Vec::with_capacity(part_len as usize);
                 file.seek(SeekFrom::Start(offset))?;
                 file.by_ref().take(part_len).read_to_end(&mut buf)?;
+                if buf.len() as u64 != part_len {
+                    return Err(OneIoError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        format!(
+                            "S3 retry part read was short: expected {part_len} bytes, got {}",
+                            buf.len()
+                        ),
+                    )));
+                }
                 buf
             }
         };
