@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## v0.24.2 -- 2026-07-26
 
 ### Fixed
 - S3 multipart upload now retries individual parts on transient transport errors (connection reset, timeout) with exponential backoff. Previously, a single transient failure on any part aborted the entire upload, wasting all successfully uploaded parts. This caused large file backups (~1 GB) to fail intermittently on constrained network paths such as Railway to Cloudflare R2.
