@@ -45,21 +45,17 @@ fn test_large_multipart_upload() {
         Ok(()) => {
             println!("✅ Upload succeeded in {:.1}s", elapsed.as_secs_f64());
 
-            // Verify: download stats
-            match oneio::s3_stats(&bucket, &key) {
-                Ok(stats) => {
-                    println!("Remote object: {} bytes", stats.content_length);
-                    assert_eq!(stats.content_length, size, "Remote size mismatch");
-                    println!("✅ Size verified: {} bytes", size);
-                }
-                Err(e) => {
-                    println!("⚠️ Upload succeeded but s3_stats failed: {e}");
-                }
-            }
-
-            // Cleanup
-            let _ = oneio::s3_delete(&bucket, &key);
+            // Verify the object, then always remove it before asserting so a
+            // failed verification cannot leave a large test object behind.
+            let stats_result = oneio::s3_stats(&bucket, &key);
+            let delete_result = oneio::s3_delete(&bucket, &key);
             println!("Cleaned up s3://{bucket}/{key}");
+
+            let stats = stats_result.expect("uploaded object should be stat-able");
+            delete_result.expect("uploaded test object should be deletable");
+            println!("Remote object: {} bytes", stats.content_length);
+            assert_eq!(stats.content_length, size, "Remote size mismatch");
+            println!("✅ Size verified: {} bytes", size);
         }
         Err(e) => {
             println!("❌ Upload FAILED after {:.1}s", elapsed.as_secs_f64());

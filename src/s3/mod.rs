@@ -12,7 +12,7 @@
 //! - `AWS_SESSION_TOKEN` - Temporary session token
 //! - `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
 //! - `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
-//! - `ONEIO_S3_MAX_RETRIES` - Max retry attempts for transient transport errors (default: 3)
+//! - `ONEIO_S3_MAX_RETRIES` - Retry attempts after the initial request for transient transport errors (default: 3)
 //! - `ONEIO_S3_RETRY_BACKOFF_MS` - Initial retry backoff in ms, doubles each attempt (default: 1000)
 //!
 //! # Upload Behavior
@@ -359,16 +359,10 @@ where
     let max_retries = config.max_retries;
     let mut backoff_ms = config.retry_backoff_ms;
 
-    for attempt in 0..=max_retries {
+    for _attempt in 0..=max_retries {
         match request() {
             Ok(response) => return Ok(response),
-            Err(e) if attempt < max_retries && is_retryable_error(&e) => {
-                eprintln!(
-                    "oneio: S3 request failed (attempt {}/{}), retrying in {}ms: {e}",
-                    attempt + 1,
-                    max_retries + 1,
-                    backoff_ms
-                );
+            Err(e) if _attempt < max_retries && is_retryable_error(&e) => {
                 std::thread::sleep(Duration::from_millis(backoff_ms));
                 backoff_ms = backoff_ms.saturating_mul(2);
             }
@@ -415,7 +409,7 @@ fn upload_part_with_retry(
     // Retry attempts: re-read from file at the recorded offset.
     let mut body = Some(body);
 
-    for attempt in 0..=max_retries {
+    for _attempt in 0..=max_retries {
         let request_body = match body.take() {
             Some(b) => b,
             None => {
@@ -437,13 +431,7 @@ fn upload_part_with_retry(
 
         match get_s3_client().put(url.clone()).body(request_body).send() {
             Ok(response) => return Ok(response),
-            Err(e) if attempt < max_retries && is_retryable_error(&e) => {
-                eprintln!(
-                    "oneio: S3 part upload failed (attempt {}/{}), retrying in {}ms: {e}",
-                    attempt + 1,
-                    max_retries + 1,
-                    backoff_ms
-                );
+            Err(e) if _attempt < max_retries && is_retryable_error(&e) => {
                 std::thread::sleep(Duration::from_millis(backoff_ms));
                 backoff_ms = backoff_ms.saturating_mul(2);
             }
