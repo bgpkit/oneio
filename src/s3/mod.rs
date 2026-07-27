@@ -184,8 +184,9 @@ fn s3_object_url(config: &config::S3Config, key: &str) -> Result<reqwest::Url, O
     }
 }
 
-// Shared HTTP client for S3 operations
+// Shared HTTP and retry configuration for S3 operations.
 static S3_HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+static S3_RETRY_CONFIG: OnceLock<(u32, u64)> = OnceLock::new();
 
 fn get_s3_client() -> &'static reqwest::blocking::Client {
     S3_HTTP_CLIENT.get_or_init(|| {
@@ -344,15 +345,17 @@ fn calculate_chunk_size(file_size: u64, requested_chunk_size: u64) -> (u64, usiz
 }
 
 fn s3_retry_config() -> (u32, u64) {
-    let max_retries = std::env::var("ONEIO_S3_MAX_RETRIES")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(3);
-    let retry_backoff_ms = std::env::var("ONEIO_S3_RETRY_BACKOFF_MS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(1000);
-    (max_retries, retry_backoff_ms)
+    *S3_RETRY_CONFIG.get_or_init(|| {
+        let max_retries = std::env::var("ONEIO_S3_MAX_RETRIES")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(3);
+        let retry_backoff_ms = std::env::var("ONEIO_S3_RETRY_BACKOFF_MS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(1000);
+        (max_retries, retry_backoff_ms)
+    })
 }
 
 /// Execute an S3 request with retry on transient transport errors.
