@@ -35,7 +35,11 @@ fn test_large_multipart_upload() {
         (size + 8 * 1024 * 1024 - 1) / (8 * 1024 * 1024)
     );
 
-    let key = format!("test-large-upload/{}.bin", std::process::id());
+    let unique_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before Unix epoch")
+        .as_nanos();
+    let key = format!("test-large-upload/{unique_id}.bin");
     println!("Uploading to s3://{bucket}/{key}");
 
     let start = Instant::now();
@@ -94,7 +98,7 @@ fn test_small_upload_baseline() {
         .to_str()
         .expect("temporary test file path must be valid UTF-8");
 
-    let key = format!("test-small-upload/{}.bin", std::process::id());
+    let key = format!("test-small-upload/{unique_id}.bin");
     println!("Uploading 1MB file to s3://{bucket}/{key}");
 
     let start = Instant::now();

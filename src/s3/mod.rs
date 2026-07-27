@@ -38,6 +38,8 @@ use std::time::Duration;
 
 type HmacSha256 = Hmac<Sha256>;
 
+const S3_UPLOAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+
 const COPY_SOURCE_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b':')
     .add(b'?')
@@ -195,9 +197,8 @@ fn get_s3_client() -> &'static reqwest::blocking::Client {
             eprintln!("Warning: failed to initialize rustls crypto provider: {e}");
         }
 
-        let mut builder = reqwest::blocking::Client::builder()
-            .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(300));
+        let mut builder =
+            reqwest::blocking::Client::builder().connect_timeout(Duration::from_secs(30));
 
         #[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
         {
@@ -325,7 +326,13 @@ fn upload_single(config: &config::S3Config, key: &str, file_path: &str) -> Resul
     let file = std::fs::File::open(file_path)?;
     let action = bucket.put_object(Some(&creds), key);
     let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
-    ensure_s3_success(get_s3_client().put(url).body(file).send()?)?;
+    ensure_s3_success(
+        get_s3_client()
+            .put(url)
+            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .body(file)
+            .send()?,
+    )?;
     Ok(())
 }
 
@@ -441,7 +448,12 @@ fn upload_part_with_retry(
             }
         };
 
-        match get_s3_client().put(url.clone()).body(request_body).send() {
+        match get_s3_client()
+            .put(url.clone())
+            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .body(request_body)
+            .send()
+        {
             Ok(response) => return Ok(response),
             Err(e) if _attempt < max_retries && is_retryable_error(&e) => {
                 std::thread::sleep(Duration::from_millis(backoff_ms));
@@ -468,7 +480,10 @@ fn upload_multipart(
     let action = bucket.create_multipart_upload(Some(&creds), key);
     let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "POST")?;
     let response = ensure_s3_success(send_with_retry(|| {
-        get_s3_client().post(url.clone()).send()
+        get_s3_client()
+            .post(url.clone())
+            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .send()
     })?)?;
     let init_response =
         rusty_s3::actions::CreateMultipartUpload::parse_response(response.text()?.as_bytes())
@@ -530,6 +545,7 @@ fn upload_multipart(
     let response = match send_with_retry(|| {
         get_s3_client()
             .post(url.clone())
+            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
             .header("content-type", "application/xml")
             .body(body.clone())
             .send()
