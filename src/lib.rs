@@ -347,7 +347,10 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
 /// Gets a reader for an HTTP(S) URL that transparently resumes with Range
 /// requests if the connection is dropped mid-transfer. Resumed-stream
 /// consistency is validated against the resource's ETag and Last-Modified
-/// headers, if the server provides them.
+/// headers, if the server provides them. Requests pin
+/// `Accept-Encoding: identity`, so byte ranges always refer to the stored
+/// representation and the reader is safe to use with the `reqwest-gzip`
+/// feature enabled.
 #[cfg(feature = "http")]
 pub fn get_resumable_http_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     builder::default_oneio()?.get_resumable_http_reader(path)

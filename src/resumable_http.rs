@@ -190,6 +190,11 @@ impl ResumableHttpReader {
                 .client
                 .get(&self.url)
                 .header(reqwest::header::RANGE, format!("bytes={}-", self.offset))
+                // Pin identity explicitly: Range offsets apply to the stored
+                // representation, so the body must not be transport-encoded.
+                // reqwest's opt-in `gzip` feature currently skips ranged
+                // requests, but this guards against that default changing.
+                .header(reqwest::header::ACCEPT_ENCODING, "identity")
                 .send()
             {
                 Ok(resp) => resp,

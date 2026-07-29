@@ -305,12 +305,30 @@ impl OneIo {
     }
 
     /// Returns a resumable HTTP reader
+    ///
+    /// The reader transparently reconnects with `Range` requests if the
+    /// connection drops mid-transfer, continuing from the last byte read.
+    /// Resumed responses are validated against the original `Content-Range`
+    /// start offset and, when the server provides them, the `ETag` and
+    /// `Last-Modified` validators; a mismatch fails the read rather than
+    /// splicing mismatched data. If the original response carries no
+    /// validator at all, resume is accepted optimistically — a resource that
+    /// changes mid-transfer is then undetectable.
+    ///
+    /// Requests pin `Accept-Encoding: identity`: Range offsets apply to the
+    /// stored representation, so the body is never transport-encoded. This
+    /// makes the reader safe to use together with the `reqwest-gzip`
+    /// feature.
     #[cfg(feature = "http")]
     pub fn get_resumable_http_reader(
         &self,
         path: &str,
     ) -> Result<Box<dyn Read + Send>, OneIoError> {
-        let raw_reader = self.get_http_reader_raw(path)?;
+        let raw_reader = crate::remote::get_http_reader_raw_with_accept_encoding(
+            path,
+            self.http_client(),
+            "identity",
+        )?;
         let resumable_raw_reader = Box::new(crate::resumable_http::ResumableHttpReader::new(
             self.http_client().clone(),
             path.to_string(),
