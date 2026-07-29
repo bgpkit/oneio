@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Removed `Content-Length: 0` from default HTTP headers. This header was sent on every request including GETs, where it incorrectly declared a zero-length request body. Some servers and proxies may reject or mishandle requests with an explicit `Content-Length` header on bodyless methods ([#82](https://github.com/bgpkit/oneio/issues/82)).
 
+### Added
+- `get_resumable_http_reader` (`oneio::get_resumable_http_reader` and `OneIo::get_resumable_http_reader`): an opt-in HTTP(S) reader that transparently resumes with Range requests if the connection is dropped mid-transfer, continuing from the last byte read instead of failing. Default readers (`get_reader`/`get_reader_raw`) and `download` are unchanged. Resumed responses are validated (`Content-Range` start offset, `ETag` and `Last-Modified` when the original response provided it) to avoid splicing mismatched data; a `416 Range Not Satisfiable` below the declared content length is surfaced as an error rather than a silent truncation.
+
 ## v0.24.2 -- 2026-07-26
 
 ### Fixed
@@ -31,9 +34,6 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Re-exported `reqwest` as `oneio::reqwest` (under the `http` feature) so downstream crates can name HTTP types (`StatusCode`, `header`, `blocking::Response`) without declaring their own reqwest dependency and risking version skew. Note: this makes reqwest part of oneio's public API contract; a reqwest major-version bump is a breaking oneio change.
 - New opt-in `reqwest-gzip` feature: advertises `Accept-Encoding: gzip` and transparently decodes `Content-Encoding: gzip` responses (e.g. ~97 MB to ~4.6 MB for `rpki.cloudflare.com/rpki.json`). Distinct from the `gz` family, which is URL-suffix-based file decompression. Off by default; no dependency-tree change unless enabled.
-
-### Added
-- `get_resumable_http_reader` (`oneio::get_resumable_http_reader` and `OneIo::get_resumable_http_reader`): an opt-in HTTP(S) reader that transparently resumes with Range requests if the connection is dropped mid-transfer, continuing from the last byte read instead of failing. Default readers (`get_reader`/`get_reader_raw`) and `download` are unchanged. Resumed responses are validated (`Content-Range` start offset, `ETag` and `Last-Modified` when the original response provided it) to avoid splicing mismatched data; a `416 Range Not Satisfiable` below the declared content length is surfaced as an error rather than a silent truncation.
 
 ## v0.23.0 -- 2026-05-12
 
