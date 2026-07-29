@@ -2,7 +2,7 @@ use crate::OneIoError;
 #[cfg(feature = "http")]
 use reqwest::blocking::Client;
 #[cfg(feature = "http")]
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_LENGTH, USER_AGENT};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, USER_AGENT};
 #[cfg(all(feature = "http", any(feature = "rustls", feature = "native-tls")))]
 use reqwest::Certificate;
 
@@ -180,7 +180,6 @@ impl OneIoBuilder {
 fn default_http_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(USER_AGENT, HeaderValue::from_static("oneio"));
-    headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
     #[cfg(feature = "cli")]
     headers.insert(
         reqwest::header::CACHE_CONTROL,
