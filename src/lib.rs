@@ -301,6 +301,15 @@ pub fn get_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
     builder::default_oneio()?.get_reader(path)
 }
 
+/// Gets a reader for an HTTP(S) URL that transparently resumes with Range
+/// requests if the connection is dropped mid-transfer. Resumed-stream
+/// consistency is validated against the resource's ETag and Last-Modified
+/// headers, if the server provides them.
+#[cfg(feature = "http")]
+pub fn get_resumable_http_reader(path: &str) -> Result<Box<dyn Read + Send>, OneIoError> {
+    builder::default_oneio()?.get_resumable_http_reader(path)
+}
+
 /// Returns a writer for the given file path with the corresponding compression.
 pub fn get_writer(path: &str) -> Result<Box<dyn Write>, OneIoError> {
     builder::default_oneio()?.get_writer(path)

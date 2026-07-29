@@ -92,6 +92,15 @@ fn test_write(to_write_file: &str, to_read_file: &str) {
     std::fs::remove_file(to_write_file).unwrap();
 }
 
+#[cfg(feature = "http")]
+fn test_resumable_read(file_path: &str) {
+    let mut reader = oneio::get_resumable_http_reader(file_path).unwrap();
+
+    let mut text = String::new();
+    reader.read_to_string(&mut text).unwrap();
+    assert_eq!(text.as_str(), TEST_TEXT);
+}
+
 #[test]
 fn test_local_files() {
     // Test local file reading with default compression formats
@@ -141,6 +150,18 @@ fn test_404_handling() {
     let reader = oneio::get_reader("https://spaces.bgpkit.org/oneio/test_data.json");
     assert!(reader.is_ok());
     assert!(oneio::exists("https://spaces.bgpkit.org/oneio/test_data.json").unwrap());
+}
+
+#[cfg(feature = "http")]
+#[test]
+fn test_resumable_http() {
+    test_resumable_read("https://spaces.bgpkit.org/oneio/test_data.txt");
+
+    #[cfg(feature = "any_gz")]
+    test_resumable_read("https://spaces.bgpkit.org/oneio/test_data.txt.gz");
+
+    #[cfg(feature = "bz")]
+    test_resumable_read("https://spaces.bgpkit.org/oneio/test_data.txt.bz2");
 }
 
 #[cfg(feature = "http")]

@@ -87,14 +87,7 @@ impl OneIo {
         let raw_reader: Box<dyn Read + Send> = match crate::get_protocol(path) {
             Some(protocol) => match protocol {
                 #[cfg(feature = "http")]
-                "http" | "https" => {
-                    let response = self.get_http_reader_raw(path)?;
-                    Box::new(crate::resumable_http::ResumableHttpReader::new(
-                        self.http_client().clone(),
-                        path.to_string(),
-                        response,
-                    ))
-                }
+                "http" | "https" => Box::new(self.get_http_reader_raw(path)?),
                 #[cfg(feature = "ftp")]
                 "ftp" => remote::get_ftp_reader_raw(path)?,
                 #[cfg(feature = "s3")]
@@ -311,6 +304,22 @@ impl OneIo {
         get_compression_reader(raw_reader, file_type)
     }
 
+    /// Returns a resumable HTTP reader
+    #[cfg(feature = "http")]
+    pub fn get_resumable_http_reader(
+        &self,
+        path: &str,
+    ) -> Result<Box<dyn Read + Send>, OneIoError> {
+        let raw_reader = self.get_http_reader_raw(path)?;
+        let resumable_raw_reader = Box::new(crate::resumable_http::ResumableHttpReader::new(
+            self.http_client().clone(),
+            path.to_string(),
+            raw_reader,
+        ));
+        let file_type = crate::file_extension(path);
+        get_compression_reader(resumable_raw_reader, file_type)
+    }
+
     /// Downloads a remote resource to a local path without decompression.
     pub fn download(&self, remote_path: &str, local_path: &str) -> Result<(), OneIoError> {
         let _ = local_path;
@@ -319,14 +328,8 @@ impl OneIo {
             #[cfg(feature = "http")]
             Some("http" | "https") => {
                 let mut writer = self.get_writer_raw(local_path)?;
-                let response = self.get_http_reader_raw(remote_path)?;
-                let mut reader = crate::resumable_http::ResumableHttpReader::new(
-                    self.http_client().clone(),
-                    remote_path.to_string(),
-                    response,
-                );
-                std::io::copy(&mut reader, &mut writer)?;
-                writer.flush()?;
+                let mut response = self.get_http_reader_raw(remote_path)?;
+                response.copy_to(&mut writer)?;
                 Ok(())
             }
             #[cfg(feature = "ftp")]

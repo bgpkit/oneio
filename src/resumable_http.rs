@@ -6,7 +6,10 @@
 //! the server may close the idle connection. This reader detects the failure
 //! and reconnects from where it left off.
 
-use reqwest::blocking::{Client, Response};
+use reqwest::{
+    blocking::{Client, Response},
+    header::HeaderValue,
+};
 use std::io::{self, Read};
 
 /// Maximum number of consecutive retry attempts before giving up.
@@ -27,9 +30,93 @@ const BASE_RETRY_DELAY_MS: u64 = 1;
 /// `None` if the value is not in the expected form.
 fn parse_content_range_start(value: &str) -> Option<u64> {
     // "bytes 5-9/10" -> "5-9/10" -> "5"
-    let range = value.strip_prefix("bytes ")?;
+    let mut parts = value.split_whitespace();
+    let unit = parts.next()?;
+    if !unit.eq_ignore_ascii_case("bytes") {
+        return None;
+    }
+    let range = parts.next()?;
     let start = range.split_once('-')?.0;
     start.trim().parse().ok()
+}
+
+/// How to interpret a `416 Range Not Satisfiable` reply to a resume request.
+enum RangeNotSatisfiable {
+    /// The resume offset is at or past the known content length, so the body
+    /// was already fully read — treat the 416 as a clean end of stream.
+    Complete,
+    /// The resume offset is below the known content length, or the length is
+    /// unknown. The body is incomplete and returning it would be a silent
+    /// truncation, so the read must fail.
+    Incomplete,
+}
+
+/// Decides whether a `416` at the current offset means the stream is complete
+/// or truncated. A 416 is only EOF when we know the total size and have already
+/// read at least that many bytes; otherwise it signals an incomplete transfer.
+fn classify_range_not_satisfiable(offset: u64, content_length: Option<u64>) -> RangeNotSatisfiable {
+    match content_length {
+        Some(len) if offset >= len => RangeNotSatisfiable::Complete,
+        _ => RangeNotSatisfiable::Incomplete,
+    }
+}
+
+/// Result of comparing the `ETag` / `Last-Modified` validators of the original
+/// and resumed responses to decide whether they describe the same resource.
+enum ValidatorCheck {
+    /// The validators agree, or the original response advertised none.
+    Match,
+    /// A validator present in both responses changed: the resource was modified
+    /// mid-transfer, so the two byte ranges must not be spliced together.
+    Modified,
+    /// The original advertised validators but the resume echoed none of them,
+    /// so the resource cannot be confirmed unchanged.
+    Unverifiable,
+}
+
+/// Compares the original and resumed validators.
+///
+/// For every validator type present in both responses the values must be equal;
+/// a single mismatch means the resource changed. If the original advertised any
+/// validator, at least one of them must reappear on the resume, otherwise the
+/// match cannot be confirmed. When the original had no validator at all there is
+/// nothing to compare, so the resume is optimistically accepted (documented
+/// residual risk).
+///
+/// Note: weak `ETag`s (`W/"..."`) are compared verbatim. They are not strictly
+/// reliable for byte-range validation, but a matching weak validator is still a
+/// useful signal in practice.
+fn compare_validators(
+    original_last_modified: Option<&HeaderValue>,
+    original_etag: Option<&HeaderValue>,
+    resume_last_modified: Option<&HeaderValue>,
+    resume_etag: Option<&HeaderValue>,
+) -> ValidatorCheck {
+    // Nothing to compare against — accept by policy.
+    if original_last_modified.is_none() && original_etag.is_none() {
+        return ValidatorCheck::Match;
+    }
+
+    let mut shared = false;
+
+    if let (Some(original), Some(resume)) = (original_etag, resume_etag) {
+        shared = true;
+        if original != resume {
+            return ValidatorCheck::Modified;
+        }
+    }
+    if let (Some(original), Some(resume)) = (original_last_modified, resume_last_modified) {
+        shared = true;
+        if original != resume {
+            return ValidatorCheck::Modified;
+        }
+    }
+
+    if shared {
+        ValidatorCheck::Match
+    } else {
+        ValidatorCheck::Unverifiable
+    }
 }
 
 /// An HTTP reader that automatically resumes downloads using Range requests
@@ -43,13 +130,20 @@ pub(crate) struct ResumableHttpReader {
     response: Response,
     /// Total raw bytes successfully read so far.
     offset: u64,
+    /// The original response's `Content-Length`, used to validate the resumed
+    /// response's EOF.
+    content_length: Option<u64>,
+    /// The original response's `Last-Modified` header value.
+    last_modified: Option<HeaderValue>,
+    /// The original response's `ETag` header value.
+    etag: Option<HeaderValue>,
 }
 
 /// Outcome of an attempt to resume the download from the current offset.
 enum Resume {
     /// The stream was replaced; read again from the new response.
     Resumed,
-    /// The requested range is unsatisfiable; treat as a clean EOF.
+    /// The stream has been consumed cleanly.
     Eof,
     /// The server ignored the Range request; resuming is not possible.
     Unsupported,
@@ -59,11 +153,27 @@ enum Resume {
 
 impl ResumableHttpReader {
     pub fn new(client: Client, url: String, response: Response) -> Self {
+        let content_length: Option<u64> = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse().ok());
+
+        let last_modified = response
+            .headers()
+            .get(reqwest::header::LAST_MODIFIED)
+            .cloned();
+
+        let etag = response.headers().get(reqwest::header::ETAG).cloned();
+
         Self {
             client,
             url,
             response,
             offset: 0,
+            content_length,
+            last_modified,
+            etag,
         }
     }
 
@@ -92,13 +202,39 @@ impl ResumableHttpReader {
             };
 
             return match resp.status() {
-                // Offset is at or past end of file.
-                reqwest::StatusCode::RANGE_NOT_SATISFIABLE => Ok(Resume::Eof),
+                // If we haven't delivered any bytes yet, a plain restart is safe
+                reqwest::StatusCode::OK if self.offset == 0 => {
+                    self.response = resp;
+                    Ok(Resume::Resumed)
+                }
+
+                reqwest::StatusCode::RANGE_NOT_SATISFIABLE => {
+                    match classify_range_not_satisfiable(self.offset, self.content_length) {
+                        // Already read the whole declared body — clean EOF.
+                        RangeNotSatisfiable::Complete => Ok(Resume::Eof),
+                        // Server can't give us the rest and we're short of the
+                        // expected length: fail loudly instead of truncating.
+                        RangeNotSatisfiable::Incomplete => Err(io::Error::new(
+                            io::ErrorKind::UnexpectedEof,
+                            format!(
+                                "server returned 416 Range Not Satisfiable while resuming at byte {}, \
+                                 but the transfer is incomplete (declared content length: {}); \
+                                 refusing to return truncated data",
+                                self.offset,
+                                self.content_length
+                                    .map(|len| len.to_string())
+                                    .unwrap_or_else(|| "unknown".to_string()),
+                            ),
+                        )),
+                    }
+                }
+
                 // Server honored the Range request.
                 reqwest::StatusCode::PARTIAL_CONTENT => {
                     self.accept_resumed_response(resp)?;
                     Ok(Resume::Resumed)
                 }
+
                 // Anything else means the Range request was ignored.
                 _ => Ok(Resume::Unsupported),
             };
@@ -137,21 +273,27 @@ impl ResumableHttpReader {
             ));
         }
 
-        if let Some(last_modified) = self.response.headers().get(reqwest::header::LAST_MODIFIED) {
-            let resume_modified = resp.headers().get(reqwest::header::LAST_MODIFIED).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "resumed resource does not have a last-modified header, but original resource did"
-                )
-            })?;
-            if resume_modified != last_modified {
+        let resume_last_modified = resp.headers().get(reqwest::header::LAST_MODIFIED);
+        let resume_etag = resp.headers().get(reqwest::header::ETAG);
+        match compare_validators(
+            self.last_modified.as_ref(),
+            self.etag.as_ref(),
+            resume_last_modified,
+            resume_etag,
+        ) {
+            ValidatorCheck::Match => {}
+            ValidatorCheck::Modified => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!(
-                        "resumed resource Last-Modified <{}> does not match the original <{}>",
-                        String::from_utf8_lossy(resume_modified.as_bytes()),
-                        String::from_utf8_lossy(last_modified.as_bytes())
-                    ),
+                    "resumed resource validators (ETag/Last-Modified) do not match the original; \
+                     the resource changed mid-transfer",
+                ));
+            }
+            ValidatorCheck::Unverifiable => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "resumed response omitted the ETag/Last-Modified validators the original \
+                     provided; cannot confirm the resource is unchanged",
                 ));
             }
         }
@@ -199,7 +341,7 @@ impl Read for ResumableHttpReader {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
 
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
@@ -268,7 +410,7 @@ mod test {
             let (mut stream1, _) = listener.accept().unwrap();
             read_request(&mut stream1);
 
-            let response_part1 = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\n\r\n12345";
+            let response_part1 = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\nETag: \"v1\"\r\n\r\n12345";
             stream1.write_all(response_part1.as_bytes()).unwrap();
             drop(stream1);
 
@@ -276,7 +418,7 @@ mod test {
             let req = read_request(&mut stream2);
             assert!(req.to_ascii_lowercase().contains("range: bytes=5-"));
 
-            let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 5-9/10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\n\r\n67890";
+            let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 5-9/10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\nETag: \"v1\"\r\n\r\n67890";
             stream2.write_all(response_part2.as_bytes()).unwrap();
         });
 
@@ -291,7 +433,44 @@ mod test {
         handle.join().unwrap();
     }
 
-    // Check reader returns an error when the server does not support Ranges
+    // Check reader resumes from a 200 only if offset is zero
+    // A server might reply with a 200 to a range request asking for the whole content
+    #[test]
+    fn resume_200_null_offset() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let url = format!("http://127.0.0.1:{}/data.txt", port);
+
+        let handle = thread::spawn(move || {
+            let (mut stream1, _) = listener.accept().unwrap();
+            read_request(&mut stream1);
+
+            let response_part1 =
+                "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n";
+            stream1.write_all(response_part1.as_bytes()).unwrap();
+            drop(stream1);
+
+            let (mut stream2, _) = listener.accept().unwrap();
+            let req = read_request(&mut stream2);
+            assert!(req.to_ascii_lowercase().contains("range: bytes=0-"));
+
+            let response_part2 = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n1234567890";
+            stream2.write_all(response_part2.as_bytes()).unwrap();
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let resp = client.get(&url).send().unwrap();
+        let mut reader = ResumableHttpReader::new(client, url, resp);
+
+        let mut buf = String::new();
+        reader.read_to_string(&mut buf).unwrap();
+
+        assert_eq!(buf.as_str(), "1234567890");
+        handle.join().unwrap();
+    }
+
+    // Check reader returns an error when the server does not support ranges
+    // In that case the server returns a 200 and the reader offset is nonzero
     #[test]
     fn range_not_supported_is_err() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -323,9 +502,9 @@ mod test {
         handle.join().unwrap();
     }
 
-    // Check out of bound range requests are treated as EOF
+    // Check that out-of-bounds range requests are treated as an error
     #[test]
-    fn range_oob_is_eof() {
+    fn range_oob_is_err() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let url = format!("http://127.0.0.1:{}/data.txt", port);
@@ -341,7 +520,7 @@ mod test {
             drop(stream1);
 
             // The resume request starts past the end of the real content, so the
-            // server reports 416 which the reader must treat as a clean EOF.
+            // server reports 416 which the reader must treat as an error.
             let (mut stream2, _) = listener.accept().unwrap();
             let req = read_request(&mut stream2);
             assert!(req.to_ascii_lowercase().contains("range: bytes=10-"));
@@ -355,12 +534,120 @@ mod test {
         let mut reader = ResumableHttpReader::new(client, url, resp);
 
         let mut buf = String::new();
-        reader.read_to_string(&mut buf).unwrap();
-        assert_eq!(buf.as_str(), "1234567890");
+        assert!(reader.read_to_string(&mut buf).is_err());
         handle.join().unwrap();
     }
 
-    // Check reader returns error when resuming reading a resource that was modified
+    // The 416-as-EOF branch (resuming exactly at/after the declared length)
+    // cannot be reached over a real socket: once reqwest has delivered all
+    // Content-Length bytes it reports a clean EOF, so no resume is ever issued
+    // at that offset. It is defensive code, so the decision is unit-tested
+    // directly instead of end-to-end.
+    #[test]
+    fn classify_416_only_eof_when_complete() {
+        use crate::resumable_http::{classify_range_not_satisfiable, RangeNotSatisfiable};
+
+        // Offset at or past a known length -> complete (EOF).
+        assert!(matches!(
+            classify_range_not_satisfiable(10, Some(10)),
+            RangeNotSatisfiable::Complete
+        ));
+        assert!(matches!(
+            classify_range_not_satisfiable(11, Some(10)),
+            RangeNotSatisfiable::Complete
+        ));
+
+        // Offset below a known length -> incomplete (error).
+        assert!(matches!(
+            classify_range_not_satisfiable(5, Some(10)),
+            RangeNotSatisfiable::Incomplete
+        ));
+
+        // Unknown length -> incomplete (error).
+        assert!(matches!(
+            classify_range_not_satisfiable(5, None),
+            RangeNotSatisfiable::Incomplete
+        ));
+    }
+
+    // Exhaustively check the validator comparison logic, which drives whether a
+    // resumed response is accepted, rejected as modified, or rejected as
+    // unverifiable.
+    #[test]
+    fn compare_validators_decision_table() {
+        use crate::resumable_http::{compare_validators, ValidatorCheck};
+        use reqwest::header::HeaderValue;
+
+        let etag_a = HeaderValue::from_static("\"v1\"");
+        let etag_b = HeaderValue::from_static("\"v2\"");
+        let lm_a = HeaderValue::from_static("Tue, 15 Nov 1994 12:45:26 GMT");
+        let lm_b = HeaderValue::from_static("Tue, 15 Nov 1995 12:45:26 GMT");
+
+        // No original validators -> accept whatever the resume carries.
+        assert!(matches!(
+            compare_validators(None, None, Some(&lm_b), Some(&etag_b)),
+            ValidatorCheck::Match
+        ));
+
+        // Matching single validator -> match.
+        assert!(matches!(
+            compare_validators(Some(&lm_a), None, Some(&lm_a), None),
+            ValidatorCheck::Match
+        ));
+        assert!(matches!(
+            compare_validators(None, Some(&etag_a), None, Some(&etag_a)),
+            ValidatorCheck::Match
+        ));
+
+        // Mismatching single validator -> modified.
+        assert!(matches!(
+            compare_validators(Some(&lm_a), None, Some(&lm_b), None),
+            ValidatorCheck::Modified
+        ));
+        assert!(matches!(
+            compare_validators(None, Some(&etag_a), None, Some(&etag_b)),
+            ValidatorCheck::Modified
+        ));
+
+        // Original advertised one validator, resume echoes it plus an extra one
+        // we never had -> match (the extra is ignored, not a reason to reject).
+        assert!(matches!(
+            compare_validators(None, Some(&etag_a), Some(&lm_a), Some(&etag_a)),
+            ValidatorCheck::Match
+        ));
+        assert!(matches!(
+            compare_validators(Some(&lm_a), None, Some(&lm_a), Some(&etag_a)),
+            ValidatorCheck::Match
+        ));
+
+        // Original had both, resume echoes only the matching ETag -> match.
+        assert!(matches!(
+            compare_validators(Some(&lm_a), Some(&etag_a), None, Some(&etag_a)),
+            ValidatorCheck::Match
+        ));
+
+        // Original had both, resume echoes a matching ETag but a changed
+        // Last-Modified -> modified (any shared mismatch fails).
+        assert!(matches!(
+            compare_validators(Some(&lm_a), Some(&etag_a), Some(&lm_b), Some(&etag_a)),
+            ValidatorCheck::Modified
+        ));
+
+        // Original had validators, resume echoes none of them -> unverifiable.
+        assert!(matches!(
+            compare_validators(Some(&lm_a), Some(&etag_a), None, None),
+            ValidatorCheck::Unverifiable
+        ));
+
+        // Original had one validator, resume returns only a different-type
+        // validator -> unverifiable (nothing shared to compare).
+        assert!(matches!(
+            compare_validators(Some(&lm_a), None, None, Some(&etag_a)),
+            ValidatorCheck::Unverifiable
+        ));
+    }
+
+    // Check reader returns an error when resuming reading a resource that was modified
     #[test]
     fn new_last_modified_is_err() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -394,7 +681,43 @@ mod test {
         handle.join().unwrap();
     }
 
-    // Check reader returns error when the resumed response drops the
+    // Check reader returns an error when the resumed response advertises an ETag
+    // that differs from the original (the resource changed mid-transfer)
+    #[test]
+    fn etag_mismatch_is_err() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let url = format!("http://127.0.0.1:{}/data.txt", port);
+
+        let handle = thread::spawn(move || {
+            let (mut stream1, _) = listener.accept().unwrap();
+            read_request(&mut stream1);
+
+            let response_part1 =
+                "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nETag: \"v1\"\r\n\r\n12345";
+            stream1.write_all(response_part1.as_bytes()).unwrap();
+            drop(stream1);
+
+            let (mut stream2, _) = listener.accept().unwrap();
+            let req = read_request(&mut stream2);
+            assert!(req.to_ascii_lowercase().contains("range: bytes=5-"));
+
+            // The resumed response advertises a different ETag.
+            let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 5-9/10\r\nETag: \"v2\"\r\n\r\n67890";
+            stream2.write_all(response_part2.as_bytes()).unwrap();
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let resp = client.get(&url).send().unwrap();
+        let mut reader = ResumableHttpReader::new(client, url, resp);
+
+        let mut buf = String::new();
+        assert!(reader.read_to_string(&mut buf).is_err());
+
+        handle.join().unwrap();
+    }
+
+    // Check reader returns an error when the resumed response drops the
     // Last-Modified header that the original response carried
     #[test]
     fn missing_last_modified_on_resume_is_err() {
@@ -430,7 +753,7 @@ mod test {
         handle.join().unwrap();
     }
 
-    // Check reader retries until MAX_RETRIES and then return an error
+    // Check reader retries until MAX_RETRIES and then returns an error
     #[test]
     fn max_retries_exhausted_is_err() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -547,42 +870,5 @@ mod test {
             attempts_counter.load(Ordering::SeqCst),
             MAX_RETRIES as usize
         );
-    }
-
-    // Check `download()` resumes when the server drops the connection mid-body,
-    // so the file written to disk contains the complete content. This exercises
-    // the resumable wiring through the download path (not just a direct reader).
-    #[test]
-    fn download_resumes_after_drop() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let url = format!("http://127.0.0.1:{}/data.txt", port);
-
-        let handle = thread::spawn(move || {
-            let (mut stream1, _) = listener.accept().unwrap();
-            read_request(&mut stream1);
-
-            let response_part1 = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\n\r\n12345";
-            stream1.write_all(response_part1.as_bytes()).unwrap();
-            drop(stream1);
-
-            let (mut stream2, _) = listener.accept().unwrap();
-            let req = read_request(&mut stream2);
-            assert!(req.to_ascii_lowercase().contains("range: bytes=5-"));
-
-            let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 5-9/10\r\nLast-Modified: Tue, 15 Nov 1994 12:45:26 GMT\r\n\r\n67890";
-            stream2.write_all(response_part2.as_bytes()).unwrap();
-        });
-
-        let local_path = std::env::temp_dir().join(format!("oneio_download_resume_{}.txt", port));
-        let local = local_path.to_str().unwrap();
-
-        crate::OneIo::new().unwrap().download(&url, local).unwrap();
-
-        let content = std::fs::read_to_string(&local_path).unwrap();
-        let _ = std::fs::remove_file(&local_path);
-
-        assert_eq!(content.as_str(), "1234567890");
-        handle.join().unwrap();
     }
 }

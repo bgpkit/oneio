@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Remote HTTP(S) reads and downloads now resume automatically via Range requests: if the connection is dropped mid-transfer, the reader reconnects and continues from the last byte read instead of failing. Applies to both streaming readers (`get_reader`/`get_reader_raw`) and `download`/`download_with_retry`. Resumed responses are validated (`Content-Range` start offset, and `Last-Modified` when the original response provided it) to avoid splicing mismatched data.
+- `get_resumable_http_reader` (`oneio::get_resumable_http_reader` and `OneIo::get_resumable_http_reader`): an opt-in HTTP(S) reader that transparently resumes with Range requests if the connection is dropped mid-transfer, continuing from the last byte read instead of failing. Default readers (`get_reader`/`get_reader_raw`) and `download` are unchanged. Resumed responses are validated (`Content-Range` start offset, `ETag` and `Last-Modified` when the original response provided it) to avoid splicing mismatched data; a `416 Range Not Satisfiable` below the declared content length is surfaced as an error rather than a silent truncation.
 
 ## v0.23.0 -- 2026-05-12
 
