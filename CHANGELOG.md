@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Fixed
+- Removed `Content-Length: 0` from default HTTP headers. This header was sent on every request including GETs, where it incorrectly declared a zero-length request body. Some servers and proxies may reject or mishandle requests with an explicit `Content-Length` header on bodyless methods ([#82](https://github.com/bgpkit/oneio/issues/82)).
+
 ## v0.24.2 -- 2026-07-26
 
 ### Fixed
