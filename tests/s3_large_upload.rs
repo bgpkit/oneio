@@ -1,0 +1,118 @@
+//! Reproducer for S3 multipart upload failure on large files.
+//!
+//! This test uploads a ~1GB file (128 parts × 8MB) to trigger the same
+//! multipart path that fails in production (Railway broker backup).
+//!
+//! Run with:
+//!   cargo test --features s3 --test s3_large_upload -- --ignored --nocapture
+
+#![cfg(feature = "s3")]
+
+use std::env;
+use std::fs;
+use std::time::Instant;
+
+#[test]
+#[ignore = "requires R2 credentials and a ~1 GB test file"]
+fn test_large_multipart_upload() {
+    let _ = dotenvy::dotenv();
+
+    let bucket = env::var("ONEIO_TEST_BUCKET").expect("ONEIO_TEST_BUCKET not set");
+    let default_test_file = std::env::temp_dir().join("test_upload_large.bin");
+    let test_file = env::var("ONEIO_S3_TEST_FILE")
+        .unwrap_or_else(|_| default_test_file.to_string_lossy().into_owned());
+
+    let metadata = fs::metadata(&test_file).unwrap_or_else(|e| {
+        panic!("Test file {test_file} not accessible: {e}. Set ONEIO_S3_TEST_FILE or create {test_file}");
+    });
+    let size = metadata.len();
+    println!(
+        "Test file: {test_file} ({:.1} MB)",
+        size as f64 / 1024.0 / 1024.0
+    );
+    println!(
+        "Expected parts: {} (at 8MB chunks)",
+        (size + 8 * 1024 * 1024 - 1) / (8 * 1024 * 1024)
+    );
+
+    let unique_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before Unix epoch")
+        .as_nanos();
+    let key = format!("test-large-upload/{unique_id}.bin");
+    println!("Uploading to s3://{bucket}/{key}");
+
+    let start = Instant::now();
+    let result = oneio::s3_upload(&bucket, &key, &test_file);
+    let elapsed = start.elapsed();
+
+    match &result {
+        Ok(()) => {
+            println!("✅ Upload succeeded in {:.1}s", elapsed.as_secs_f64());
+
+            // Verify the object, then always remove it before asserting so a
+            // failed verification cannot leave a large test object behind.
+            let stats_result = oneio::s3_stats(&bucket, &key);
+            let delete_result = oneio::s3_delete(&bucket, &key);
+            println!("Cleaned up s3://{bucket}/{key}");
+
+            let stats = stats_result.expect("uploaded object should be stat-able");
+            delete_result.expect("uploaded test object should be deletable");
+            println!("Remote object: {} bytes", stats.content_length);
+            assert_eq!(stats.content_length, size, "Remote size mismatch");
+            println!("✅ Size verified: {} bytes", size);
+        }
+        Err(e) => {
+            println!("❌ Upload FAILED after {:.1}s", elapsed.as_secs_f64());
+            println!("Error: {e}");
+            println!("\nError chain:");
+            let mut source: Option<&dyn std::error::Error> = std::error::Error::source(e);
+            while let Some(s) = source {
+                println!("  └── {s}");
+                source = std::error::Error::source(s);
+            }
+            let _ = oneio::s3_delete(&bucket, &key);
+            panic!("Upload failed: {e}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires R2 credentials"]
+fn test_small_upload_baseline() {
+    let _ = dotenvy::dotenv();
+
+    let bucket = env::var("ONEIO_TEST_BUCKET").expect("ONEIO_TEST_BUCKET not set");
+
+    // Create a small 1MB file (under 5MB multipart threshold).
+    let unique_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before Unix epoch")
+        .as_nanos();
+    let test_file = std::env::temp_dir().join(format!("oneio-small-upload-{unique_id}.bin"));
+    let size = 1024 * 1024; // 1MB
+    let data = vec![0x42u8; size];
+    fs::write(&test_file, &data).expect("failed to write test file");
+
+    let test_file = test_file
+        .to_str()
+        .expect("temporary test file path must be valid UTF-8");
+
+    let key = format!("test-small-upload/{unique_id}.bin");
+    println!("Uploading 1MB file to s3://{bucket}/{key}");
+
+    let start = Instant::now();
+    let result = oneio::s3_upload(&bucket, &key, test_file);
+    let elapsed = start.elapsed();
+
+    match &result {
+        Ok(()) => println!("✅ Small upload succeeded in {:.1}s", elapsed.as_secs_f64()),
+        Err(e) => {
+            println!("❌ Small upload FAILED: {e}");
+            panic!("Small upload failed: {e}");
+        }
+    }
+
+    let _ = oneio::s3_delete(&bucket, &key);
+    let _ = fs::remove_file(test_file);
+}

@@ -20,31 +20,31 @@ oneio = "0.22"  # Default: gz, bz, https
 
 **Local files only:**
 ```toml
-oneio = { version = "0.23", default-features = false, features = ["gz", "bz"] }
+oneio = { version = "0.24", default-features = false, features = ["gz", "bz"] }
 ```
 
 **HTTPS with default rustls**:
 ```toml
-oneio = { version = "0.23", default-features = false, features = ["https", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["https", "gz"] }
 ```
 
 **HTTPS with custom TLS backend**:
 ```toml
 # With rustls
-oneio = { version = "0.23", default-features = false, features = ["http", "rustls", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["http", "rustls", "gz"] }
 
 # With native-tls (recommended for corporate proxies/VPNs)
-oneio = { version = "0.23", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 **S3-compatible storage**:
 ```toml
-oneio = { version = "0.23", default-features = false, features = ["s3", "https", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["s3", "https", "gz"] }
 ```
 
 **Async operations**:
 ```toml
-oneio = { version = "0.23", features = ["async"] }
+oneio = { version = "0.24", features = ["async"] }
 ```
 
 ### Available Features
@@ -61,6 +61,7 @@ oneio = { version = "0.23", features = ["async"] }
 - `https` - HTTP/HTTPS with rustls TLS backend (equivalent to `http` + `rustls`)
 - `ftp` - FTP support (requires `http` + TLS backend)
 - `s3` - S3-compatible storage
+- `reqwest-gzip` - Opt-in HTTP gzip content-encoding: advertises `Accept-Encoding: gzip` and transparently decodes gzipped responses (distinct from `gz`, which is URL-suffix-based file decompression)
 
 **TLS Backends** (for HTTPS - mutually exclusive):
 - `rustls` - Pure Rust TLS (use with `http`). Uses both system certificates and bundled Mozilla certificates for maximum compatibility.
@@ -78,7 +79,7 @@ If you're behind a corporate proxy or VPN like Cloudflare WARP that uses custom 
 
 ```toml
 [dependencies]
-oneio = { version = "0.23", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.24", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 The `native-tls` feature uses your operating system's TLS stack with its trust store, which includes custom corporate certificates. This works for both HTTP/HTTPS and S3 operations.
@@ -160,7 +161,8 @@ The `OneIo` client allows you to configure headers, TLS certificates, timeouts, 
 
 ```rust
 use oneio::OneIo;
-use reqwest::header::{HeaderName, HeaderValue};
+// reqwest is re-exported for naming HTTP types without a direct reqwest dependency
+use oneio::reqwest::header::{HeaderName, HeaderValue};
 
 // Build a reusable client with custom headers and certificates
 let oneio = OneIo::builder()

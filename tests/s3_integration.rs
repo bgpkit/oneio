@@ -131,6 +131,27 @@ fn test_r2_single_put_small() {
 
 #[test]
 #[ignore = "requires R2 credentials"]
+fn test_r2_single_put_small_leading_slash_key() {
+    let (bucket, _guard) = begin_s3_test();
+    let prefix = format!("/{}", test_prefix("single-put-leading-slash"));
+    let key = format!("{prefix}small-file.txt");
+    let data = generate_test_data(1024, "leading-slash-small");
+    let temp_path = TempFile::new(&data);
+
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
+    assert_eq!(
+        oneio::s3_list(&bucket, &prefix, None, false).unwrap(),
+        vec![key.clone()]
+    );
+    assert_stream_matches(&bucket, &key, &data);
+    oneio::s3_delete(&bucket, &key).unwrap();
+    assert!(!oneio::s3_exists(&bucket, &key).unwrap());
+
+    cleanup_test_objects(&bucket, &prefix);
+}
+
+#[test]
+#[ignore = "requires R2 credentials"]
 fn test_r2_single_put_just_under_5mb() {
     let (bucket, _guard) = begin_s3_test();
     let prefix = test_prefix("single-put-just-under-5mb");
@@ -182,6 +203,53 @@ fn test_r2_multipart_10mb() {
     let stats = oneio::s3_stats(&bucket, &key).unwrap();
     assert_eq!(stats.content_length, size as u64);
     assert_stream_matches(&bucket, &key, &data);
+
+    cleanup_test_objects(&bucket, &prefix);
+}
+
+#[test]
+#[ignore = "requires R2 credentials"]
+fn test_r2_multipart_10mb_leading_slash_key() {
+    let (bucket, _guard) = begin_s3_test();
+    let prefix = format!("/{}", test_prefix("multipart-10mb-leading-slash"));
+    let key = format!("{prefix}multipart-10mb.bin");
+    let data = generate_test_data(10 * 1024 * 1024, "leading-slash-10mb");
+    let temp_path = TempFile::new(&data);
+
+    oneio::s3_upload(&bucket, &key, temp_path.as_ref().to_str().unwrap()).unwrap();
+    assert_eq!(
+        oneio::s3_list(&bucket, &prefix, None, false).unwrap(),
+        vec![key.clone()]
+    );
+
+    let stats = oneio::s3_stats(&bucket, &key).unwrap();
+    assert_eq!(stats.content_length, data.len() as u64);
+    assert_stream_matches(&bucket, &key, &data);
+    oneio::s3_delete(&bucket, &key).unwrap();
+    assert!(!oneio::s3_exists(&bucket, &key).unwrap());
+
+    cleanup_test_objects(&bucket, &prefix);
+}
+
+#[test]
+#[ignore = "requires R2 credentials"]
+fn test_r2_leading_slash_key_lifecycle() {
+    let (bucket, _guard) = begin_s3_test();
+    let prefix = format!("/{}", test_prefix("leading-slash-lifecycle"));
+    let source_key = format!("{prefix}source.bin");
+    let copied_key = format!("{prefix}copied.bin");
+    let data = generate_test_data(1024, "leading-slash-lifecycle");
+    let temp_path = TempFile::new(&data);
+
+    oneio::s3_upload(&bucket, &source_key, temp_path.as_ref().to_str().unwrap()).unwrap();
+    assert!(oneio::s3_exists(&bucket, &source_key).unwrap());
+
+    oneio::s3_copy(&bucket, &source_key, &copied_key).unwrap();
+    assert!(oneio::s3_exists(&bucket, &copied_key).unwrap());
+    assert_stream_matches(&bucket, &copied_key, &data);
+
+    oneio::s3_delete(&bucket, &copied_key).unwrap();
+    assert!(!oneio::s3_exists(&bucket, &copied_key).unwrap());
 
     cleanup_test_objects(&bucket, &prefix);
 }

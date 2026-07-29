@@ -2,7 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## Unreleased
+
+### Fixed
+- Removed `Content-Length: 0` from default HTTP headers. This header was sent on every request including GETs, where it incorrectly declared a zero-length request body. Some servers and proxies may reject or mishandle requests with an explicit `Content-Length` header on bodyless methods ([#82](https://github.com/bgpkit/oneio/issues/82)).
+
+## v0.24.2 -- 2026-07-26
+
+### Fixed
+- S3 multipart upload now retries individual parts on transient transport errors (connection reset, timeout) with exponential backoff. Previously, a single transient failure on any part aborted the entire upload, wasting all successfully uploaded parts. This caused large file backups (~1 GB) to fail intermittently on constrained network paths such as Railway to Cloudflare R2.
+- Added a 300-second per-request timeout to S3 upload operations (previously only connect timeout was set).
+
+### Added
+- `ONEIO_S3_MAX_RETRIES` environment variable to configure retry attempts after the initial request for transient S3 transport errors (default: 3).
+- `ONEIO_S3_RETRY_BACKOFF_MS` environment variable to configure initial retry backoff in milliseconds (default: 1000, doubles each attempt).
+
+## v0.24.1 -- 2026-07-23
+
+### Fixed
+- CLI no longer buffers multi-GB single-line files into memory before output. Default mode now streams decompressed bytes directly to stdout via `io::copy` instead of line-by-line reading. `--stats` mode uses byte-chunk scanning to count lines and characters without building full-line `String` allocations.
+  - **Behavior change**: the default mode now outputs raw decompressed bytes with no UTF-8 decoding or line-based rewriting. This means `--strict-utf8` has no effect outside `--stats` mode (it issues a warning and continues), and files without a trailing newline are no longer rewritten to add one.
+
+## v0.24.0 -- 2026-07-22
+
+### Bug fixes
+- Preserve leading-slash S3 object keys when using path-style endpoints such as Cloudflare R2.
+
+### Added
+- Re-exported `reqwest` as `oneio::reqwest` (under the `http` feature) so downstream crates can name HTTP types (`StatusCode`, `header`, `blocking::Response`) without declaring their own reqwest dependency and risking version skew. Note: this makes reqwest part of oneio's public API contract; a reqwest major-version bump is a breaking oneio change.
+- New opt-in `reqwest-gzip` feature: advertises `Accept-Encoding: gzip` and transparently decodes `Content-Encoding: gzip` responses (e.g. ~97 MB to ~4.6 MB for `rpki.cloudflare.com/rpki.json`). Distinct from the `gz` family, which is URL-suffix-based file decompression. Off by default; no dependency-tree change unless enabled.
 
 ### Added
 - `get_resumable_http_reader` (`oneio::get_resumable_http_reader` and `OneIo::get_resumable_http_reader`): an opt-in HTTP(S) reader that transparently resumes with Range requests if the connection is dropped mid-transfer, continuing from the last byte read instead of failing. Default readers (`get_reader`/`get_reader_raw`) and `download` are unchanged. Resumed responses are validated (`Content-Range` start offset, `ETag` and `Last-Modified` when the original response provided it) to avoid splicing mismatched data; a `416 Range Not Satisfiable` below the declared content length is surfaced as an error rather than a silent truncation.

@@ -12,6 +12,8 @@
 //! - `AWS_SESSION_TOKEN` - Temporary session token
 //! - `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
 //! - `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
+//! - `ONEIO_S3_MAX_RETRIES` - Retry attempts after the initial request for transient transport errors (default: 3)
+//! - `ONEIO_S3_RETRY_BACKOFF_MS` - Initial retry backoff in ms, doubles each attempt (default: 1000)
 //!
 //! # Upload Behavior
 //!
@@ -30,11 +32,13 @@ use quick_xml::{events::Event, Reader};
 use reqwest::blocking::Response;
 use rusty_s3::S3Action;
 use sha2::{Digest, Sha256};
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::sync::OnceLock;
 use std::time::Duration;
 
 type HmacSha256 = Hmac<Sha256>;
+
+const S3_UPLOAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 
 const COPY_SOURCE_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b':')
@@ -66,8 +70,125 @@ const COPY_SOURCE_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b'^')
     .add(b'`');
 
-// Shared HTTP client for S3 operations
+const S3_QUERY_ENCODE_SET: &AsciiSet = &COPY_SOURCE_ENCODE_SET.add(b'/');
+
+fn uses_path_style(config: &config::S3Config) -> bool {
+    !config.endpoint.contains("amazonaws.com") || config.bucket.contains('.')
+}
+
+fn path_style_object_url(
+    config: &config::S3Config,
+    encoded_object_path: &str,
+) -> Result<reqwest::Url, OneIoError> {
+    format!(
+        "{}/{bucket}/{encoded_object_path}",
+        config.endpoint,
+        bucket = config.bucket
+    )
+    .parse()
+    .map_err(|e| OneIoError::NotSupported(format!("Invalid S3 endpoint: {e}")))
+}
+
+/// Restore a path-style bucket component lost by rusty-s3 for leading-slash keys.
+///
+/// rusty-s3 resolves object keys with `Url::join()`. A leading slash therefore
+/// replaces the path-style bucket component before the action is signed. Rebuild
+/// the object path and re-sign the presigned request with the original action
+/// query parameters.
+fn repair_leading_slash_action_url(
+    mut url: reqwest::Url,
+    config: &config::S3Config,
+    key: &str,
+    method: &str,
+) -> Result<reqwest::Url, OneIoError> {
+    if !key.starts_with('/') || !uses_path_style(config) {
+        return Ok(url);
+    }
+
+    let encoded_object_path = url.path().to_string();
+    let action_query = url.query().map(str::to_owned);
+    url = path_style_object_url(config, &encoded_object_path)?;
+    url.set_query(action_query.as_deref());
+
+    let mut query: Vec<(String, String)> = url
+        .query_pairs()
+        .filter(|(name, _)| name != "X-Amz-Signature")
+        .map(|(name, value)| (name.into_owned(), value.into_owned()))
+        .collect();
+    query.sort_unstable();
+
+    let datetime = query
+        .iter()
+        .find(|(name, _)| name == "X-Amz-Date")
+        .map(|(_, value)| value.as_str())
+        .ok_or_else(|| OneIoError::NotSupported("Missing X-Amz-Date in S3 action".to_string()))?;
+    let datestamp = datetime
+        .get(..8)
+        .ok_or_else(|| OneIoError::NotSupported("Malformed X-Amz-Date in S3 action".to_string()))?;
+
+    let default_port = match url.scheme() {
+        "https" => 443,
+        "http" => 80,
+        _ => 0,
+    };
+    let host = match url.port() {
+        Some(port) if port != default_port => format!(
+            "{}:{port}",
+            url.host_str()
+                .ok_or_else(|| OneIoError::NotSupported("Invalid URL: no host".to_string()))?
+        ),
+        _ => url
+            .host_str()
+            .ok_or_else(|| OneIoError::NotSupported("Invalid URL: no host".to_string()))?
+            .to_string(),
+    };
+
+    let canonical_query = query
+        .iter()
+        .map(|(name, value)| {
+            format!(
+                "{}={}",
+                utf8_percent_encode(name, S3_QUERY_ENCODE_SET),
+                utf8_percent_encode(value, S3_QUERY_ENCODE_SET)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    let canonical_request = format!(
+        "{method}\n{}\n{canonical_query}\nhost:{host}\n\nhost\nUNSIGNED-PAYLOAD",
+        url.path()
+    );
+    let credential_scope = format!("{datestamp}/{}/s3/aws4_request", config.region);
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{datetime}\n{credential_scope}\n{}",
+        hex::encode(Sha256::digest(canonical_request.as_bytes()))
+    );
+    let signing_key = derive_signing_key(&config.credentials.secret_key, datestamp, &config.region);
+    let signature = hex::encode(hmac_sha256(&signing_key, string_to_sign.as_bytes()));
+
+    url.set_query(Some(&format!(
+        "{canonical_query}&X-Amz-Signature={signature}"
+    )));
+
+    Ok(url)
+}
+
+fn s3_object_url(config: &config::S3Config, key: &str) -> Result<reqwest::Url, OneIoError> {
+    let url = config
+        .rusty_bucket()?
+        .object_url(key)
+        .map_err(|e| OneIoError::NotSupported(format!("Invalid object key: {e}")))?;
+
+    if key.starts_with('/') && uses_path_style(config) {
+        path_style_object_url(config, url.path())
+    } else {
+        Ok(url)
+    }
+}
+
+// Shared HTTP and retry configuration for S3 operations.
 static S3_HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+static S3_RETRY_CONFIG: OnceLock<(u32, u64)> = OnceLock::new();
 
 fn get_s3_client() -> &'static reqwest::blocking::Client {
     S3_HTTP_CLIENT.get_or_init(|| {
@@ -163,7 +284,7 @@ pub fn s3_reader(bucket: &str, key: &str) -> Result<Box<dyn Read + Send>, OneIoE
     let bucket = config.rusty_bucket()?;
     let creds = config.rusty_credentials();
     let action = bucket.get_object(Some(&creds), key);
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), &config, key, "GET")?;
     let response = ensure_s3_success(get_s3_client().get(url).send()?)?;
     Ok(Box::new(response))
 }
@@ -204,8 +325,14 @@ fn upload_single(config: &config::S3Config, key: &str, file_path: &str) -> Resul
 
     let file = std::fs::File::open(file_path)?;
     let action = bucket.put_object(Some(&creds), key);
-    let url = action.sign(config.ttl);
-    ensure_s3_success(get_s3_client().put(url).body(file).send()?)?;
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
+    ensure_s3_success(
+        get_s3_client()
+            .put(url)
+            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .body(file)
+            .send()?,
+    )?;
     Ok(())
 }
 
@@ -224,6 +351,120 @@ fn calculate_chunk_size(file_size: u64, requested_chunk_size: u64) -> (u64, usiz
     (chunk_size, total_parts)
 }
 
+fn s3_retry_config() -> (u32, u64) {
+    *S3_RETRY_CONFIG.get_or_init(|| {
+        let max_retries = std::env::var("ONEIO_S3_MAX_RETRIES")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(3);
+        let retry_backoff_ms = std::env::var("ONEIO_S3_RETRY_BACKOFF_MS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(1000);
+        (max_retries, retry_backoff_ms)
+    })
+}
+
+/// Execute an S3 request with retry on transient transport errors.
+///
+/// S3-compatible services (especially Cloudflare R2) occasionally reset
+/// connections during large multipart uploads. Without retry, a single
+/// transient failure on any part aborts the entire multipart upload,
+/// wasting all successfully uploaded parts. This helper retries transport
+/// errors (connection reset, timeout) with exponential backoff. HTTP status
+/// errors (4xx/5xx) are returned immediately without retry — they arrive
+/// as `Response`, not `Error`, and are handled by the caller.
+fn send_with_retry<F>(request: F) -> Result<Response, OneIoError>
+where
+    F: Fn() -> Result<Response, reqwest::Error>,
+{
+    let (max_retries, mut backoff_ms) = s3_retry_config();
+
+    for _attempt in 0..=max_retries {
+        match request() {
+            Ok(response) => return Ok(response),
+            Err(e) if _attempt < max_retries && is_retryable_error(&e) => {
+                std::thread::sleep(Duration::from_millis(backoff_ms));
+                backoff_ms = backoff_ms.saturating_mul(2);
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    unreachable!()
+}
+
+/// Determine if a reqwest error is likely transient and worth retrying.
+///
+/// Retryable: timeouts, connection resets, broken pipes, DNS failures.
+/// Non-retryable: invalid URLs, TLS errors, HTTP status errors (which
+/// arrive as `Response`, not `Error`).
+fn is_retryable_error(err: &reqwest::Error) -> bool {
+    if err.is_timeout() || err.is_connect() {
+        return true;
+    }
+    // Body decode errors (connection reset mid-stream) are transient
+    if err.is_body() || err.is_decode() {
+        return true;
+    }
+    false
+}
+
+/// Upload a single multipart part with retry, avoiding unnecessary clones.
+///
+/// On the first attempt, `body` is moved into the request with zero copy.
+/// On retry (transient transport error), the part bytes are re-read from
+/// `file` at `offset` to reconstruct the request body. This avoids cloning
+/// the full chunk on every attempt — the happy path has no extra allocation.
+fn upload_part_with_retry(
+    url: &reqwest::Url,
+    body: Vec<u8>,
+    file: &mut std::fs::File,
+    offset: u64,
+    part_len: u64,
+) -> Result<Response, OneIoError> {
+    let (max_retries, mut backoff_ms) = s3_retry_config();
+
+    // First attempt: move the body, no clone.
+    // Retry attempts: re-read from file at the recorded offset.
+    let mut body = Some(body);
+
+    for _attempt in 0..=max_retries {
+        let request_body = match body.take() {
+            Some(b) => b,
+            None => {
+                let mut buf = Vec::with_capacity(part_len as usize);
+                file.seek(SeekFrom::Start(offset))?;
+                file.by_ref().take(part_len).read_to_end(&mut buf)?;
+                if buf.len() as u64 != part_len {
+                    return Err(OneIoError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        format!(
+                            "S3 retry part read was short: expected {part_len} bytes, got {}",
+                            buf.len()
+                        ),
+                    )));
+                }
+                buf
+            }
+        };
+
+        match get_s3_client()
+            .put(url.clone())
+            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .body(request_body)
+            .send()
+        {
+            Ok(response) => return Ok(response),
+            Err(e) if _attempt < max_retries && is_retryable_error(&e) => {
+                std::thread::sleep(Duration::from_millis(backoff_ms));
+                backoff_ms = backoff_ms.saturating_mul(2);
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    unreachable!()
+}
+
 fn upload_multipart(
     config: &config::S3Config,
     key: &str,
@@ -237,8 +478,13 @@ fn upload_multipart(
 
     // 1. Initiate multipart upload
     let action = bucket.create_multipart_upload(Some(&creds), key);
-    let url = action.sign(config.ttl);
-    let response = ensure_s3_success(get_s3_client().post(url).send()?)?;
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "POST")?;
+    let response = ensure_s3_success(send_with_retry(|| {
+        get_s3_client()
+            .post(url.clone())
+            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .send()
+    })?)?;
     let init_response =
         rusty_s3::actions::CreateMultipartUpload::parse_response(response.text()?.as_bytes())
             .map_err(|e| OneIoError::Network(Box::new(e)))?;
@@ -258,16 +504,29 @@ fn upload_multipart(
             }
 
             let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
-            let url = action.sign(config.ttl);
-            let response = ensure_s3_success(
-                get_s3_client()
-                    .put(url)
-                    .body(std::mem::replace(
-                        &mut chunk,
-                        Vec::with_capacity(chunk_size as usize),
+            let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
+            let part_data = std::mem::replace(&mut chunk, Vec::with_capacity(chunk_size as usize));
+            let part_len = part_data.len() as u64;
+            let part_offset = file
+                .stream_position()?
+                .checked_sub(part_len)
+                .ok_or_else(|| {
+                    OneIoError::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "multipart part offset exceeds file position",
                     ))
-                    .send()?,
-            )?;
+                })?;
+
+            // Upload this part with retry. On the first attempt, move the
+            // body to avoid cloning the full chunk. On retry (transient
+            // transport error), re-read the same bytes from the file.
+            let response = ensure_s3_success(upload_part_with_retry(
+                &url,
+                part_data,
+                &mut file,
+                part_offset,
+                part_len,
+            )?)?;
 
             let etag = extract_etag(response.headers()).ok_or_else(|| {
                 OneIoError::NotSupported("Missing ETag in UploadPart response".into())
@@ -278,7 +537,7 @@ fn upload_multipart(
     })();
 
     if let Err(e) = upload_result {
-        abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
+        abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
         return Err(e);
     }
 
@@ -289,30 +548,32 @@ fn upload_multipart(
         &upload_id,
         parts.iter().map(|s| s.as_str()),
     );
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "POST")?;
     let body = action.body();
-    let response = match get_s3_client()
-        .post(url)
-        .header("content-type", "application/xml")
-        .body(body)
-        .send()
-    {
+    let response = match send_with_retry(|| {
+        get_s3_client()
+            .post(url.clone())
+            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .header("content-type", "application/xml")
+            .body(body.clone())
+            .send()
+    }) {
         Ok(response) => response,
         Err(e) => {
-            abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
-            return Err(e.into());
+            abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
+            return Err(e);
         }
     };
 
     // CompleteMultipartUpload can return 200 OK with an embedded <Error> body.
     // Validate HTTP status first, then parse the body to confirm success.
     if !response.status().is_success() {
-        abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
+        abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
         return Err(s3_error_from_response(response));
     }
     let complete_body = response.text().unwrap_or_default();
     if let Some(parsed) = parse_s3_error_xml(&complete_body) {
-        abort_multipart_upload(&bucket, &creds, key, &upload_id, config.ttl);
+        abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
         return Err(map_parsed_s3_error(200, parsed));
     }
 
@@ -322,13 +583,15 @@ fn upload_multipart(
 fn abort_multipart_upload(
     bucket: &rusty_s3::Bucket,
     creds: &rusty_s3::Credentials,
+    config: &config::S3Config,
     key: &str,
     upload_id: &str,
-    ttl: Duration,
 ) {
     let action = bucket.abort_multipart_upload(Some(creds), key, upload_id);
-    let url = action.sign(ttl);
-    let _ = get_s3_client().delete(url).send();
+    if let Ok(url) = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "DELETE")
+    {
+        let _ = get_s3_client().delete(url).send();
+    }
 }
 
 /// Copies an object within the same S3 bucket.
@@ -346,12 +609,8 @@ fn abort_multipart_upload(
 /// multipart copy (not yet implemented).
 pub fn s3_copy(bucket: &str, src_key: &str, dst_key: &str) -> Result<(), OneIoError> {
     let config = config::S3Config::from_env(bucket)?;
-    let bucket_obj = config.rusty_bucket()?;
-
     // Get the base URL for the destination object
-    let url = bucket_obj
-        .object_url(dst_key)
-        .map_err(|e| OneIoError::NotSupported(format!("Invalid destination key: {e}")))?;
+    let url = s3_object_url(&config, dst_key)?;
     let url_str = url.as_str();
 
     // Extract host and path for signing, including non-default port
@@ -551,7 +810,7 @@ pub fn s3_delete(bucket: &str, key: &str) -> Result<(), OneIoError> {
     let bucket_obj = config.rusty_bucket()?;
     let creds = config.rusty_credentials();
     let action = bucket_obj.delete_object(Some(&creds), key);
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), &config, key, "DELETE")?;
     ensure_s3_success(get_s3_client().delete(url).send()?)?;
     Ok(())
 }
@@ -562,7 +821,7 @@ fn s3_head_object(bucket: &str, key: &str) -> Result<reqwest::blocking::Response
     let bucket_obj = config.rusty_bucket()?;
     let creds = config.rusty_credentials();
     let action = bucket_obj.head_object(Some(&creds), key);
-    let url = action.sign(config.ttl);
+    let url = repair_leading_slash_action_url(action.sign(config.ttl), &config, key, "HEAD")?;
     Ok(get_s3_client().head(url).send()?)
 }
 
@@ -804,6 +1063,39 @@ fn parse_s3_error_xml(body: &str) -> Option<ParsedS3Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn path_style_test_config() -> config::S3Config {
+        config::S3Config {
+            bucket: "test-bucket".to_string(),
+            credentials: config::S3Credentials {
+                access_key: "test-access-key".to_string(),
+                secret_key: "test-secret-key".to_string(),
+                session_token: None,
+            },
+            endpoint: "https://s3.example.test/base".to_string(),
+            region: "us-east-1".to_string(),
+            ttl: Duration::from_secs(60),
+            multipart_chunk_size: 8 * 1024 * 1024,
+            multipart_threshold: 5 * 1024 * 1024,
+        }
+    }
+
+    #[test]
+    fn test_leading_slash_path_style_urls_preserve_bucket_and_key() {
+        let config = path_style_test_config();
+        let bucket = config.rusty_bucket().unwrap();
+        let creds = config.rusty_credentials();
+        let action = bucket.get_object(Some(&creds), "/folder/file name.txt");
+        let action_url = action.sign(config.ttl);
+
+        let repaired =
+            repair_leading_slash_action_url(action_url, &config, "/folder/file name.txt", "GET")
+                .unwrap();
+        assert_eq!(repaired.path(), "/base/test-bucket//folder/file%20name.txt");
+
+        let copy_url = s3_object_url(&config, "/folder/file name.txt").unwrap();
+        assert_eq!(copy_url.path(), "/base/test-bucket//folder/file%20name.txt");
+    }
 
     #[test]
     fn test_s3_url_parse() {
