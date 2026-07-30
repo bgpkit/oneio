@@ -304,6 +304,40 @@ impl OneIo {
         get_compression_reader(raw_reader, file_type)
     }
 
+    /// Returns a resumable HTTP reader
+    ///
+    /// The reader transparently reconnects with `Range` requests if the
+    /// connection drops mid-transfer, continuing from the last byte read.
+    /// Resumed responses are validated against the original `Content-Range`
+    /// start offset and, when the server provides them, the `ETag` and
+    /// `Last-Modified` validators; a mismatch fails the read rather than
+    /// splicing mismatched data. If the original response carries no
+    /// validator at all, resume is accepted optimistically — a resource that
+    /// changes mid-transfer is then undetectable.
+    ///
+    /// Requests pin `Accept-Encoding: identity`: Range offsets apply to the
+    /// stored representation, so the body is never transport-encoded. This
+    /// makes the reader safe to use together with the `reqwest-gzip`
+    /// feature.
+    #[cfg(feature = "http")]
+    pub fn get_resumable_http_reader(
+        &self,
+        path: &str,
+    ) -> Result<Box<dyn Read + Send>, OneIoError> {
+        let raw_reader = crate::remote::get_http_reader_raw_with_accept_encoding(
+            path,
+            self.http_client(),
+            "identity",
+        )?;
+        let resumable_raw_reader = Box::new(crate::resumable_http::ResumableHttpReader::new(
+            self.http_client().clone(),
+            path.to_string(),
+            raw_reader,
+        ));
+        let file_type = crate::file_extension(path);
+        get_compression_reader(resumable_raw_reader, file_type)
+    }
+
     /// Downloads a remote resource to a local path without decompression.
     pub fn download(&self, remote_path: &str, local_path: &str) -> Result<(), OneIoError> {
         let _ = local_path;

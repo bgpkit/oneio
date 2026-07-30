@@ -40,8 +40,34 @@ pub(crate) fn get_http_reader_raw(
     path: &str,
     client: &Client,
 ) -> Result<reqwest::blocking::Response, OneIoError> {
+    get_http_reader_raw_inner(path, client, None)
+}
+
+/// Same as `get_http_reader_raw`, but sends an explicit `Accept-Encoding`
+/// header. Resumable reads use this to pin `identity`: Range byte offsets
+/// apply to the resource's stored representation, so the body must not be
+/// transport-encoded.
+#[cfg(feature = "http")]
+pub(crate) fn get_http_reader_raw_with_accept_encoding(
+    path: &str,
+    client: &Client,
+    accept_encoding: &'static str,
+) -> Result<reqwest::blocking::Response, OneIoError> {
+    get_http_reader_raw_inner(path, client, Some(accept_encoding))
+}
+
+#[cfg(feature = "http")]
+fn get_http_reader_raw_inner(
+    path: &str,
+    client: &Client,
+    accept_encoding: Option<&'static str>,
+) -> Result<reqwest::blocking::Response, OneIoError> {
+    let mut req = client.get(path);
+    if let Some(value) = accept_encoding {
+        req = req.header(reqwest::header::ACCEPT_ENCODING, value);
+    }
     let res = client
-        .execute(client.get(path).build()?)?
+        .execute(req.build()?)?
         .error_for_status()
         .map_err(|e| OneIoError::NetworkWithContext {
             source: Box::new(e),
