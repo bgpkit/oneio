@@ -11,7 +11,7 @@ files from local and remote sources with both synchronous and asynchronous suppo
 ## Quick Start
 
 ```toml
-oneio = "0.25"  # Default: gz, bz, https
+oneio = "0.26"  # Default: gz, bz, https
 ```
 
 ## Feature Selection Guide
@@ -20,31 +20,31 @@ oneio = "0.25"  # Default: gz, bz, https
 
 **Local files only:**
 ```toml
-oneio = { version = "0.25", default-features = false, features = ["gz", "bz"] }
+oneio = { version = "0.26", default-features = false, features = ["gz", "bz"] }
 ```
 
 **HTTPS with default rustls**:
 ```toml
-oneio = { version = "0.25", default-features = false, features = ["https", "gz"] }
+oneio = { version = "0.26", default-features = false, features = ["https", "gz"] }
 ```
 
 **HTTPS with custom TLS backend**:
 ```toml
 # With rustls
-oneio = { version = "0.25", default-features = false, features = ["http", "rustls", "gz"] }
+oneio = { version = "0.26", default-features = false, features = ["http", "rustls", "gz"] }
 
 # With native-tls (recommended for corporate proxies/VPNs)
-oneio = { version = "0.25", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.26", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 **S3-compatible storage**:
 ```toml
-oneio = { version = "0.25", default-features = false, features = ["s3", "https", "gz"] }
+oneio = { version = "0.26", default-features = false, features = ["s3", "https", "gz"] }
 ```
 
 **Async operations**:
 ```toml
-oneio = { version = "0.25", features = ["async"] }
+oneio = { version = "0.26", features = ["async"] }
 ```
 
 ### Available Features
@@ -79,7 +79,7 @@ If you're behind a corporate proxy or VPN like Cloudflare WARP that uses custom 
 
 ```toml
 [dependencies]
-oneio = { version = "0.25", default-features = false, features = ["http", "native-tls", "gz"] }
+oneio = { version = "0.26", default-features = false, features = ["http", "native-tls", "gz"] }
 ```
 
 The `native-tls` feature uses your operating system's TLS stack with its trust store, which includes custom corporate certificates. This works for both HTTP/HTTPS and S3 operations.
