@@ -111,6 +111,16 @@ enum S3Commands {
         outfile: Option<PathBuf>,
     },
 
+    /// Delete an object from an S3 bucket
+    #[command(alias = "rm")]
+    Delete {
+        /// S3 bucket name
+        bucket: String,
+
+        /// S3 key path
+        path: String,
+    },
+
     /// List objects in an S3 bucket
     List {
         /// S3 bucket name
@@ -402,6 +412,17 @@ fn main() {
                         Ok(_) => println!("downloaded s3://{bucket}/{path} to {local_path}"),
                         Err(e) => {
                             eprintln!("download error: {e}");
+                            exit(1);
+                        }
+                    }
+                }
+
+                S3Commands::Delete { bucket, path } => {
+                    s3_credentials_or_exit();
+                    match oneio::s3_delete(&bucket, &path) {
+                        Ok(_) => println!("deleted s3://{bucket}/{path}"),
+                        Err(e) => {
+                            eprintln!("delete error: {e}");
                             exit(1);
                         }
                     }

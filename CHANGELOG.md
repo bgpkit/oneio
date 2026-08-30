@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### New features
+
+* `oneio s3 delete` (alias `rm`) CLI subcommand for deleting a single S3 object, mirroring the existing `s3_upload`/`s3_delete` library API
+
 All notable changes to this project will be documented in this file.
 
 ## v0.25.0 -- 2026-08-11
