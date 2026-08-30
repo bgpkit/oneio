@@ -440,6 +440,12 @@ $ oneio s3 list my-bucket path/ --delimiter "/"
 $ oneio s3 list my-bucket path/ --dirs
 ```
 
+**Delete an S3 object:**
+```bash
+$ oneio s3 delete my-bucket path/in/s3.txt
+deleted s3://my-bucket/path/in/s3.txt
+```
+
 ### Generate SHA256 Digest
 
 ```bash
