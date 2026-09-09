@@ -14,6 +14,22 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  msrv:
+    name: Check MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: ~/.cargo/bin
+
+      - name: Install cargo-msrv
+        run: cargo install cargo-msrv --locked
+
+      - name: Verify MSRV with all features
+        run: cargo msrv verify -- cargo check --all-features
+
   format:
     name: Format
     runs-on: ubuntu-latest
