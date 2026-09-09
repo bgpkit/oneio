@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+- Updated `suppaftp` dependency from 7.0 to 12.0, addressing [RUSTSEC-2026-0271](https://rustsec.org/advisories/RUSTSEC-2026-0271.html) (FTP command injection via CRLF in control channel arguments). suppaftp 12 requires Rust 1.88; the MSRV is now declared as `rust-version = "1.88.0"`.
+
+### Added
+
+- CI: security audit job (`cargo audit`, runs on Cargo.toml/Cargo.lock changes and weekly) and MSRV check job (`cargo msrv verify` with all features).
+
 ## v0.26.0 -- 2026-08-31
 
 ### Added
