@@ -7,10 +7,12 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Updated `suppaftp` dependency from 7.0 to 12.0, addressing [RUSTSEC-2026-0271](https://rustsec.org/advisories/RUSTSEC-2026-0271.html) (FTP command injection via CRLF in control channel arguments). suppaftp 12 requires Rust 1.88; the MSRV is now declared as `rust-version = "1.88.0"`.
+- Updated `rusty-s3` from 0.9 to 0.10 and `quick-xml` from 0.38 to 0.41, addressing [RUSTSEC-2026-0194](https://rustsec.org/advisories/RUSTSEC-2026-0194.html) and [RUSTSEC-2026-0195](https://rustsec.org/advisories/RUSTSEC-2026-0195.html) (quick-xml parsing denial-of-service). rusty-s3 0.10's `parse_response` takes `&str` instead of `&[u8]`; internal call sites updated accordingly.
 
 ### Added
 
 - CI: security audit job (`cargo audit`, runs on Cargo.toml/Cargo.lock changes and weekly) and MSRV check job (`cargo msrv verify` with all features).
+- Ignored integration test against `ftp.radb.net` (anonymous FTP read of `radb.db.gz`) for manual FTP-path verification.
 
 ## v0.26.0 -- 2026-08-31
 

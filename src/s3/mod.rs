@@ -486,7 +486,7 @@ fn upload_multipart(
             .send()
     })?)?;
     let init_response =
-        rusty_s3::actions::CreateMultipartUpload::parse_response(response.text()?.as_bytes())
+        rusty_s3::actions::CreateMultipartUpload::parse_response(response.text()?.as_str())
             .map_err(|e| OneIoError::Network(Box::new(e)))?;
     let upload_id = init_response.upload_id().to_string();
 
@@ -905,7 +905,7 @@ pub fn s3_list(
         let url = action.sign(config.ttl);
         let response = ensure_s3_success(get_s3_client().get(url).send()?)?;
 
-        let parsed = rusty_s3::actions::ListObjectsV2::parse_response(response.text()?.as_bytes())
+        let parsed = rusty_s3::actions::ListObjectsV2::parse_response(response.text()?.as_str())
             .map_err(|e| OneIoError::Network(Box::new(e)))?;
 
         if dirs {
