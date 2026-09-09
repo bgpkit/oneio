@@ -28,7 +28,7 @@ jobs:
         run: cargo install cargo-msrv --locked
 
       - name: Verify MSRV with all features
-        run: cargo msrv verify -- --all-features
+        run: cargo msrv verify -- cargo check --all-features
 
   format:
     name: Format
