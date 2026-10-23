@@ -14,12 +14,15 @@
 //! - `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
 //! - `ONEIO_S3_MAX_RETRIES` - Retry attempts after the initial request for transient transport errors (default: 3)
 //! - `ONEIO_S3_RETRY_BACKOFF_MS` - Initial retry backoff in ms, doubles each attempt (default: 1000)
+//! - `ONEIO_S3_MAX_CONCURRENCY` - Multipart parts uploaded in parallel (default: 4, max: 16)
+//! - `ONEIO_S3_REQUEST_TIMEOUT_SECS` - Per-request timeout for upload requests (default: 300)
 //!
 //! # Upload Behavior
 //!
 //! Files smaller than the multipart threshold use a single PUT request.
 //! Larger files are uploaded via multipart with auto-calculated part sizing
-//! to stay within S3's 10,000 part limit.
+//! to stay within S3's 10,000 part limit, and with parts uploaded in parallel.
+//! Peak memory for a multipart upload is `concurrency * part_size`.
 
 pub mod config;
 
@@ -33,12 +36,18 @@ use reqwest::blocking::Response;
 use rusty_s3::S3Action;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Seek, SeekFrom};
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 type HmacSha256 = Hmac<Sha256>;
 
-const S3_UPLOAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+/// Multipart parts uploaded in parallel when the caller does not override it.
+const DEFAULT_MULTIPART_CONCURRENCY: usize = 4;
+/// Upper bound on multipart workers, so one upload cannot exhaust the caller.
+const MAX_MULTIPART_CONCURRENCY: usize = 16;
+/// Per-request timeout for S3 upload requests (single PUT, part, initiate, complete).
+const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 300;
 
 const COPY_SOURCE_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b':')
@@ -329,7 +338,7 @@ fn upload_single(config: &config::S3Config, key: &str, file_path: &str) -> Resul
     ensure_s3_success(
         get_s3_client()
             .put(url)
-            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .timeout(upload_request_timeout())
             .body(file)
             .send()?,
     )?;
@@ -363,6 +372,50 @@ fn s3_retry_config() -> (u32, u64) {
             .unwrap_or(1000);
         (max_retries, retry_backoff_ms)
     })
+}
+
+/// Concurrency and request timeout for S3 uploads, read once from the
+/// environment so repeated uploads in one process behave identically.
+fn s3_upload_tuning() -> (usize, Duration) {
+    static S3_UPLOAD_CONFIG: OnceLock<(usize, Duration)> = OnceLock::new();
+    *S3_UPLOAD_CONFIG.get_or_init(|| {
+        let concurrency = std::env::var("ONEIO_S3_MAX_CONCURRENCY")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(DEFAULT_MULTIPART_CONCURRENCY);
+        let timeout_secs = std::env::var("ONEIO_S3_REQUEST_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SECS);
+        (concurrency, Duration::from_secs(timeout_secs))
+    })
+}
+
+fn upload_request_timeout() -> Duration {
+    s3_upload_tuning().1
+}
+
+/// Number of parts to keep in flight. Bounded by the configured value, the
+/// per-upload ceiling and the number of parts there are to send.
+fn multipart_concurrency(requested: usize, total_parts: usize) -> usize {
+    requested
+        .clamp(1, MAX_MULTIPART_CONCURRENCY)
+        .min(total_parts.max(1))
+}
+
+/// Turn per-part ETag slots into the ordered part list for
+/// CompleteMultipartUpload. A missing slot means a worker never succeeded.
+fn collect_part_etags(slots: &[Option<String>]) -> Result<Vec<String>, OneIoError> {
+    slots
+        .iter()
+        .enumerate()
+        .map(|(index, slot)| {
+            slot.clone().ok_or_else(|| {
+                OneIoError::NotSupported(format!("Missing ETag for multipart part {}", index + 1))
+            })
+        })
+        .collect()
 }
 
 /// Execute an S3 request with retry on transient transport errors.
@@ -450,7 +503,7 @@ fn upload_part_with_retry(
 
         match get_s3_client()
             .put(url.clone())
-            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .timeout(upload_request_timeout())
             .body(request_body)
             .send()
         {
@@ -482,7 +535,7 @@ fn upload_multipart(
     let response = ensure_s3_success(send_with_retry(|| {
         get_s3_client()
             .post(url.clone())
-            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .timeout(upload_request_timeout())
             .send()
     })?)?;
     let init_response =
@@ -490,56 +543,94 @@ fn upload_multipart(
             .map_err(|e| OneIoError::Network(Box::new(e)))?;
     let upload_id = init_response.upload_id().to_string();
 
-    // 2. Upload parts with abort-on-failure guard
-    let mut parts: Vec<String> = Vec::with_capacity(total_parts);
-    let mut file = std::fs::File::open(file_path)?;
-    let mut chunk = Vec::with_capacity(chunk_size as usize);
+    // 2. Upload parts concurrently. Each worker owns its own file handle and
+    //    reads only the range it uploads, so there is no shared seek or buffer
+    //    state. One stalled part therefore no longer stops the whole upload:
+    //    the other workers keep filling the pipe.
+    let concurrency = multipart_concurrency(s3_upload_tuning().0, total_parts);
+    let next_part = AtomicUsize::new(0);
+    let stop = AtomicBool::new(false);
+    let slots: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; total_parts]);
+    let mut first_error: Option<OneIoError> = None;
 
-    let upload_result = (|| -> Result<(), OneIoError> {
-        for part_number in 1..=total_parts {
-            chunk.clear();
-            let bytes_read = file.by_ref().take(chunk_size).read_to_end(&mut chunk)?;
-            if bytes_read == 0 {
-                break;
-            }
+    std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(concurrency);
+        for _ in 0..concurrency {
+            handles.push(scope.spawn(|| -> Result<(), OneIoError> {
+                let mut file = std::fs::File::open(file_path)?;
+                loop {
+                    if stop.load(Ordering::Relaxed) {
+                        return Ok(());
+                    }
+                    let index = next_part.fetch_add(1, Ordering::Relaxed);
+                    if index >= total_parts {
+                        return Ok(());
+                    }
+                    let offset = index as u64 * chunk_size;
+                    let part_len = (size - offset).min(chunk_size);
 
-            let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
-            let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
-            let part_data = std::mem::replace(&mut chunk, Vec::with_capacity(chunk_size as usize));
-            let part_len = part_data.len() as u64;
-            let part_offset = file
-                .stream_position()?
-                .checked_sub(part_len)
-                .ok_or_else(|| {
-                    OneIoError::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "multipart part offset exceeds file position",
-                    ))
-                })?;
+                    let mut body = Vec::with_capacity(part_len as usize);
+                    file.seek(SeekFrom::Start(offset))?;
+                    file.by_ref().take(part_len).read_to_end(&mut body)?;
+                    if body.len() as u64 != part_len {
+                        return Err(OneIoError::Io(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            format!(
+                                "multipart part read was short: expected {part_len} bytes, got {}",
+                                body.len()
+                            ),
+                        )));
+                    }
 
-            // Upload this part with retry. On the first attempt, move the
-            // body to avoid cloning the full chunk. On retry (transient
-            // transport error), re-read the same bytes from the file.
-            let response = ensure_s3_success(upload_part_with_retry(
-                &url,
-                part_data,
-                &mut file,
-                part_offset,
-                part_len,
-            )?)?;
+                    let action =
+                        bucket.upload_part(Some(&creds), key, (index + 1) as u16, &upload_id);
+                    let url = repair_leading_slash_action_url(
+                        action.sign(config.ttl),
+                        config,
+                        key,
+                        "PUT",
+                    )?;
 
-            let etag = extract_etag(response.headers()).ok_or_else(|| {
-                OneIoError::NotSupported("Missing ETag in UploadPart response".into())
-            })?;
-            parts.push(etag);
+                    // On retry this re-reads the same range from this worker's
+                    // own file handle, so workers never race on a seek.
+                    let response = ensure_s3_success(upload_part_with_retry(
+                        &url, body, &mut file, offset, part_len,
+                    )?)?;
+                    let etag = extract_etag(response.headers()).ok_or_else(|| {
+                        OneIoError::NotSupported("Missing ETag in UploadPart response".into())
+                    })?;
+                    slots
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())[index] = Some(etag);
+                }
+            }));
         }
-        Ok(())
-    })();
 
-    if let Err(e) = upload_result {
+        for handle in handles {
+            let error = match handle.join() {
+                Ok(Ok(())) => continue,
+                Ok(Err(e)) => e,
+                Err(_) => OneIoError::NotSupported("multipart part worker panicked".to_string()),
+            };
+            // Stop the remaining workers at their next part boundary; each
+            // keeps its own error, we report the first one.
+            stop.store(true, Ordering::Relaxed);
+            if first_error.is_none() {
+                first_error = Some(error);
+            }
+        }
+    });
+
+    if let Some(e) = first_error {
         abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
         return Err(e);
     }
+
+    let parts = collect_part_etags(
+        &slots
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+    )?;
 
     // 3. Complete multipart upload
     let action = bucket.complete_multipart_upload(
@@ -553,7 +644,7 @@ fn upload_multipart(
     let response = match send_with_retry(|| {
         get_s3_client()
             .post(url.clone())
-            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .timeout(upload_request_timeout())
             .header("content-type", "application/xml")
             .body(body.clone())
             .send()
@@ -1222,5 +1313,50 @@ mod tests {
         assert!(tp <= 10_000);
         assert!(cs >= 8 * 1024 * 1024);
         assert_eq!(tp, ((hundred_gb + cs - 1) / cs) as usize);
+    }
+
+    #[test]
+    fn test_multipart_concurrency_bounds() {
+        // Requested value is used when there is enough work.
+        assert_eq!(multipart_concurrency(4, 100), 4);
+        // Never more workers than parts.
+        assert_eq!(multipart_concurrency(4, 2), 2);
+        // At least one worker, even for a single-part upload.
+        assert_eq!(multipart_concurrency(4, 1), 1);
+        assert_eq!(multipart_concurrency(0, 10), 1);
+        // Never above the per-upload ceiling.
+        assert_eq!(
+            multipart_concurrency(1_000, 10_000),
+            MAX_MULTIPART_CONCURRENCY
+        );
+    }
+
+    #[test]
+    fn test_collect_part_etags_preserves_part_order() {
+        let slots = vec![
+            Some("etag-1".to_string()),
+            Some("etag-2".to_string()),
+            Some("etag-3".to_string()),
+        ];
+        assert_eq!(
+            collect_part_etags(&slots).map_err(|e| e.to_string()),
+            Ok(vec![
+                "etag-1".to_string(),
+                "etag-2".to_string(),
+                "etag-3".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_collect_part_etags_rejects_missing_part() {
+        let slots = vec![Some("etag-1".to_string()), None];
+        match collect_part_etags(&slots) {
+            Ok(parts) => panic!("expected a missing-part error, got {parts:?}"),
+            Err(crate::OneIoError::NotSupported(message)) => {
+                assert_eq!(message, "Missing ETag for multipart part 2");
+            }
+            Err(e) => panic!("unexpected error: {e}"),
+        }
     }
 }

@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- `ONEIO_S3_MAX_CONCURRENCY` - number of multipart parts uploaded in parallel
+  (default 4, capped at 16).
+- `ONEIO_S3_REQUEST_TIMEOUT_SECS` - per-request timeout for S3 upload requests
+  (default 300, the previous hardcoded value).
+
+### Changed
+
+- S3 multipart uploads now run parts in parallel, each worker reading its own
+  byte range from its own file handle. Previously parts were uploaded one at a
+  time, so a single TCP stream set the ceiling and one stalled part blocked
+  everything until the request timeout. Part retries, abort-on-failure and
+  part ordering are unchanged.
+- Peak memory for a multipart upload is `concurrency * part_size` (4 x 8 MiB
+  with the defaults).
+
 ## v0.26.1 -- 2026-09-09
 
 ### Changed

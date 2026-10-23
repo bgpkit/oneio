@@ -270,7 +270,8 @@ Note: Async compression is limited to gz, bz, zstd. LZ4/XZ return `NotSupported`
 use oneio::s3::*;
 
 // Upload file to S3
-// Files < 8MB use single PUT; larger files use multipart upload
+// Files under the multipart threshold (5MB by default) use a single PUT;
+// larger files are uploaded as parallel parts
 s3_upload("my-bucket", "path/to/file.txt", "local/file.txt")?;
 
 // Download file from S3
@@ -306,6 +307,8 @@ Optional environment variables for S3:
 - `AWS_SESSION_TOKEN` - Temporary session token
 - `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
 - `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
+- `ONEIO_S3_MAX_CONCURRENCY` - Multipart parts uploaded in parallel (default: 4, max: 16)
+- `ONEIO_S3_REQUEST_TIMEOUT_SECS` - Per-request timeout for upload requests (default: 300)
 
 ### Error Handling
 
