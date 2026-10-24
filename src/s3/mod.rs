@@ -418,6 +418,62 @@ fn collect_part_etags(slots: &[Option<String>]) -> Result<Vec<String>, OneIoErro
         .collect()
 }
 
+/// Shared state of one multipart part pool: which part to take next, whether a
+/// worker has already failed, and which error to report.
+struct PartUploadState {
+    next_part: AtomicUsize,
+    stop: AtomicBool,
+    first_error: Mutex<Option<OneIoError>>,
+}
+
+impl PartUploadState {
+    fn new() -> Self {
+        Self {
+            next_part: AtomicUsize::new(0),
+            stop: AtomicBool::new(false),
+            first_error: Mutex::new(None),
+        }
+    }
+
+    /// Claim the next part, or `None` once every part is taken or the pool has
+    /// already failed.
+    fn claim(&self, total_parts: usize) -> Option<usize> {
+        if self.stop.load(Ordering::Relaxed) {
+            return None;
+        }
+        let index = self.next_part.fetch_add(1, Ordering::Relaxed);
+        (index < total_parts).then_some(index)
+    }
+
+    #[cfg(test)]
+    fn cancelled(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
+
+    /// Record a failure and stop the pool.
+    ///
+    /// Workers call this themselves: the coordinator joins them in creation
+    /// order, so signalling from the join loop would let a failure in a later
+    /// worker go unnoticed while the remaining parts are still uploaded.
+    fn fail(&self, error: OneIoError) {
+        let mut slot = self
+            .first_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if slot.is_none() {
+            *slot = Some(error);
+        }
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    /// The first error reported by any worker, if one was.
+    fn into_error(self) -> Option<OneIoError> {
+        self.first_error
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
 /// Execute an S3 request with retry on transient transport errors.
 ///
 /// S3-compatible services (especially Cloudflare R2) occasionally reset
@@ -548,80 +604,75 @@ fn upload_multipart(
     //    state. One stalled part therefore no longer stops the whole upload:
     //    the other workers keep filling the pipe.
     let concurrency = multipart_concurrency(s3_upload_tuning().0, total_parts);
-    let next_part = AtomicUsize::new(0);
-    let stop = AtomicBool::new(false);
+    let state = PartUploadState::new();
     let slots: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; total_parts]);
-    let mut first_error: Option<OneIoError> = None;
 
     std::thread::scope(|scope| {
         let mut handles = Vec::with_capacity(concurrency);
         for _ in 0..concurrency {
-            handles.push(scope.spawn(|| -> Result<(), OneIoError> {
-                let mut file = std::fs::File::open(file_path)?;
-                loop {
-                    if stop.load(Ordering::Relaxed) {
-                        return Ok(());
-                    }
-                    let index = next_part.fetch_add(1, Ordering::Relaxed);
-                    if index >= total_parts {
-                        return Ok(());
-                    }
-                    let offset = index as u64 * chunk_size;
-                    let part_len = (size - offset).min(chunk_size);
+            handles.push(scope.spawn(|| {
+                let outcome = (|| -> Result<(), OneIoError> {
+                    let mut file = std::fs::File::open(file_path)?;
+                    while let Some(index) = state.claim(total_parts) {
+                        let offset = index as u64 * chunk_size;
+                        let part_len = (size - offset).min(chunk_size);
 
-                    let mut body = Vec::with_capacity(part_len as usize);
-                    file.seek(SeekFrom::Start(offset))?;
-                    file.by_ref().take(part_len).read_to_end(&mut body)?;
-                    if body.len() as u64 != part_len {
-                        return Err(OneIoError::Io(std::io::Error::new(
-                            std::io::ErrorKind::UnexpectedEof,
-                            format!(
-                                "multipart part read was short: expected {part_len} bytes, got {}",
-                                body.len()
-                            ),
-                        )));
+                        let mut body = Vec::with_capacity(part_len as usize);
+                        file.seek(SeekFrom::Start(offset))?;
+                        file.by_ref().take(part_len).read_to_end(&mut body)?;
+                        if body.len() as u64 != part_len {
+                            return Err(OneIoError::Io(std::io::Error::new(
+                                std::io::ErrorKind::UnexpectedEof,
+                                format!(
+                                    "multipart part read was short: expected {part_len} bytes, \
+                                     got {}",
+                                    body.len()
+                                ),
+                            )));
+                        }
+
+                        let action =
+                            bucket.upload_part(Some(&creds), key, (index + 1) as u16, &upload_id);
+                        let url = repair_leading_slash_action_url(
+                            action.sign(config.ttl),
+                            config,
+                            key,
+                            "PUT",
+                        )?;
+
+                        // On retry this re-reads the same range from this
+                        // worker's own file handle, so workers never race on a
+                        // seek.
+                        let response = ensure_s3_success(upload_part_with_retry(
+                            &url, body, &mut file, offset, part_len,
+                        )?)?;
+                        let etag = extract_etag(response.headers()).ok_or_else(|| {
+                            OneIoError::NotSupported("Missing ETag in UploadPart response".into())
+                        })?;
+                        slots
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())[index] = Some(etag);
                     }
-
-                    let action =
-                        bucket.upload_part(Some(&creds), key, (index + 1) as u16, &upload_id);
-                    let url = repair_leading_slash_action_url(
-                        action.sign(config.ttl),
-                        config,
-                        key,
-                        "PUT",
-                    )?;
-
-                    // On retry this re-reads the same range from this worker's
-                    // own file handle, so workers never race on a seek.
-                    let response = ensure_s3_success(upload_part_with_retry(
-                        &url, body, &mut file, offset, part_len,
-                    )?)?;
-                    let etag = extract_etag(response.headers()).ok_or_else(|| {
-                        OneIoError::NotSupported("Missing ETag in UploadPart response".into())
-                    })?;
-                    slots
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner())[index] = Some(etag);
+                    Ok(())
+                })();
+                if let Err(e) = outcome {
+                    state.fail(e);
                 }
             }));
         }
 
+        // Workers stop themselves through `state.fail`; joining is only needed
+        // to surface a panic, which cannot report through that path.
         for handle in handles {
-            let error = match handle.join() {
-                Ok(Ok(())) => continue,
-                Ok(Err(e)) => e,
-                Err(_) => OneIoError::NotSupported("multipart part worker panicked".to_string()),
-            };
-            // Stop the remaining workers at their next part boundary; each
-            // keeps its own error, we report the first one.
-            stop.store(true, Ordering::Relaxed);
-            if first_error.is_none() {
-                first_error = Some(error);
+            if handle.join().is_err() {
+                state.fail(OneIoError::NotSupported(
+                    "multipart part worker panicked".to_string(),
+                ));
             }
         }
     });
 
-    if let Some(e) = first_error {
+    if let Some(e) = state.into_error() {
         abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
         return Err(e);
     }
@@ -1358,5 +1409,58 @@ mod tests {
             }
             Err(e) => panic!("unexpected error: {e}"),
         }
+    }
+
+    #[test]
+    fn part_state_claims_each_part_once() {
+        let state = PartUploadState::new();
+        let claimed: Vec<usize> = std::iter::from_fn(|| state.claim(3)).collect();
+        assert_eq!(claimed, vec![0, 1, 2]);
+        assert_eq!(state.claim(3), None);
+    }
+
+    #[test]
+    fn part_state_keeps_first_failure_and_stops_claims() {
+        let state = PartUploadState::new();
+        assert_eq!(state.claim(10), Some(0));
+        state.fail(crate::OneIoError::NotSupported("part 2 failed".into()));
+        state.fail(crate::OneIoError::NotSupported("part 5 failed".into()));
+        assert!(state.cancelled());
+        assert_eq!(state.claim(10), None);
+        match state.into_error() {
+            Some(crate::OneIoError::NotSupported(message)) => assert_eq!(message, "part 2 failed"),
+            other => panic!("expected the first failure, got {other:?}"),
+        }
+    }
+
+    /// The coordinator joins workers in creation order, so a failing worker has
+    /// to publish cancellation itself. Otherwise a failure in a later worker
+    /// waits behind a slow earlier worker while the remaining parts keep
+    /// uploading.
+    #[test]
+    fn part_state_failure_is_visible_while_another_worker_runs() {
+        let state = PartUploadState::new();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+
+        std::thread::scope(|scope| {
+            let blocked = scope.spawn(move || {
+                let _ = release_rx.recv_timeout(std::time::Duration::from_secs(10));
+            });
+            let failing = scope.spawn(|| {
+                state.fail(crate::OneIoError::NotSupported("part 2 failed".into()));
+            });
+
+            let _ = failing.join();
+            let cancelled_while_blocked = state.cancelled();
+            let _ = release_tx.send(());
+            let _ = blocked.join();
+
+            assert!(
+                cancelled_while_blocked,
+                "a failing worker must set the stop flag before other workers finish"
+            );
+        });
+
+        assert!(state.into_error().is_some());
     }
 }
