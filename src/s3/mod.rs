@@ -324,7 +324,7 @@ pub fn s3_upload(bucket: &str, key: &str, file_path: &str) -> Result<(), OneIoEr
     if size < config.multipart_threshold {
         upload_single(&config, key, file_path)
     } else {
-        upload_multipart(&config, key, file_path, size)
+        upload_multipart(&config, key, file_path)
     }
 }
 
@@ -518,43 +518,77 @@ fn is_retryable_error(err: &reqwest::Error) -> bool {
     false
 }
 
+/// Single open handle for the multipart source, read under a lock.
+///
+/// Reopening the path in each worker would let an atomic replacement of the
+/// file between two opens mix bytes from two versions into one object: the
+/// per-part length checks still pass when both versions have the same size.
+/// Handles cloned from one open would share a seek position instead, so reads
+/// go through this lock rather than a raw file per worker.
+struct PartSource {
+    file: Mutex<std::fs::File>,
+}
+
+impl PartSource {
+    fn open(path: &str) -> Result<Self, OneIoError> {
+        Ok(Self {
+            file: Mutex::new(std::fs::File::open(path)?),
+        })
+    }
+
+    /// Size of the open file, not of whatever the path resolves to now.
+    fn len(&self) -> Result<u64, OneIoError> {
+        let file = self
+            .file
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        Ok(file.metadata()?.len())
+    }
+
+    /// Read exactly `len` bytes at `offset` from the open file.
+    fn read_range(&self, offset: u64, len: u64) -> Result<Vec<u8>, OneIoError> {
+        let mut file = self
+            .file
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut buf = Vec::with_capacity(len as usize);
+        file.seek(SeekFrom::Start(offset))?;
+        file.by_ref().take(len).read_to_end(&mut buf)?;
+        if buf.len() as u64 != len {
+            return Err(OneIoError::Io(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!(
+                    "multipart part read was short: expected {len} bytes, got {}",
+                    buf.len()
+                ),
+            )));
+        }
+        Ok(buf)
+    }
+}
+
 /// Upload a single multipart part with retry, avoiding unnecessary clones.
 ///
 /// On the first attempt, `body` is moved into the request with zero copy.
 /// On retry (transient transport error), the part bytes are re-read from
-/// `file` at `offset` to reconstruct the request body. This avoids cloning
-/// the full chunk on every attempt — the happy path has no extra allocation.
+/// `source` at `offset` to reconstruct the request body.
 fn upload_part_with_retry(
     url: &reqwest::Url,
     body: Vec<u8>,
-    file: &mut std::fs::File,
+    source: &PartSource,
     offset: u64,
     part_len: u64,
 ) -> Result<Response, OneIoError> {
     let (max_retries, mut backoff_ms) = s3_retry_config();
 
     // First attempt: move the body, no clone.
-    // Retry attempts: re-read from file at the recorded offset.
+    // Retry attempts: re-read the same range from the open source.
     let mut body = Some(body);
 
     for _attempt in 0..=max_retries {
         let request_body = match body.take() {
             Some(b) => b,
-            None => {
-                let mut buf = Vec::with_capacity(part_len as usize);
-                file.seek(SeekFrom::Start(offset))?;
-                file.by_ref().take(part_len).read_to_end(&mut buf)?;
-                if buf.len() as u64 != part_len {
-                    return Err(OneIoError::Io(std::io::Error::new(
-                        std::io::ErrorKind::UnexpectedEof,
-                        format!(
-                            "S3 retry part read was short: expected {part_len} bytes, got {}",
-                            buf.len()
-                        ),
-                    )));
-                }
-                buf
-            }
+            None => source.read_range(offset, part_len)?,
         };
 
         match get_s3_client()
@@ -578,8 +612,11 @@ fn upload_multipart(
     config: &config::S3Config,
     key: &str,
     file_path: &str,
-    size: u64,
 ) -> Result<(), OneIoError> {
+    // One open handle covers the part ranges, the total size and the retry
+    // reads, so every part comes from the same file version.
+    let source = PartSource::open(file_path)?;
+    let size = source.len()?;
     let (chunk_size, total_parts) = calculate_chunk_size(size, config.multipart_chunk_size);
 
     let bucket = config.rusty_bucket()?;
@@ -617,24 +654,10 @@ fn upload_multipart(
                 .name("oneio-s3-part".to_string())
                 .spawn_scoped(scope, || {
                     let outcome = (|| -> Result<(), OneIoError> {
-                        let mut file = std::fs::File::open(file_path)?;
                         while let Some(index) = state.claim(total_parts) {
                             let offset = index as u64 * chunk_size;
                             let part_len = (size - offset).min(chunk_size);
-
-                            let mut body = Vec::with_capacity(part_len as usize);
-                            file.seek(SeekFrom::Start(offset))?;
-                            file.by_ref().take(part_len).read_to_end(&mut body)?;
-                            if body.len() as u64 != part_len {
-                                return Err(OneIoError::Io(std::io::Error::new(
-                                    std::io::ErrorKind::UnexpectedEof,
-                                    format!(
-                                        "multipart part read was short: expected {part_len} \
-                                         bytes, got {}",
-                                        body.len()
-                                    ),
-                                )));
-                            }
+                            let body = source.read_range(offset, part_len)?;
 
                             let action = bucket.upload_part(
                                 Some(&creds),
@@ -654,7 +677,7 @@ fn upload_multipart(
                             // worker's own file handle, so workers never race
                             // on a seek.
                             let response = ensure_s3_success(upload_part_with_retry(
-                                &url, body, &mut file, offset, part_len,
+                                &url, body, &source, offset, part_len,
                             )?)?;
                             let etag = extract_etag(response.headers()).ok_or_else(|| {
                                 OneIoError::NotSupported(
@@ -1432,6 +1455,49 @@ mod tests {
             }
             Err(e) => panic!("unexpected error: {e}"),
         }
+    }
+
+    fn temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("oneio-{}-{nanos}-{name}", std::process::id()))
+    }
+
+    #[test]
+    fn part_source_reads_exact_ranges() {
+        let path = temp_path("ranges.bin");
+        std::fs::write(&path, b"0123456789abcdef").unwrap();
+        let source = PartSource::open(path.to_str().unwrap()).unwrap();
+
+        assert_eq!(source.len().unwrap(), 16);
+        assert_eq!(source.read_range(0, 4).unwrap(), b"0123".to_vec());
+        assert_eq!(source.read_range(10, 6).unwrap(), b"abcdef".to_vec());
+        // A range past the end is an error, not a short body.
+        assert!(source.read_range(10, 7).is_err());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A rotating writer replaces the path atomically; the upload must keep
+    /// reading the file version it opened, not whichever version the path
+    /// resolves to now. Equal sizes make a mixed upload otherwise invisible.
+    #[cfg(unix)]
+    #[test]
+    fn part_source_keeps_the_opened_file_after_path_replacement() {
+        let path = temp_path("replace.bin");
+        let replacement = temp_path("replacement.bin");
+        std::fs::write(&path, b"AAAAAAAAAAAA").unwrap();
+        std::fs::write(&replacement, b"BBBBBBBBBBBB").unwrap();
+
+        let source = PartSource::open(path.to_str().unwrap()).unwrap();
+        std::fs::rename(&replacement, &path).unwrap();
+
+        assert_eq!(source.len().unwrap(), 12);
+        assert_eq!(source.read_range(0, 12).unwrap(), b"AAAAAAAAAAAA".to_vec());
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

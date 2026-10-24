@@ -91,6 +91,10 @@ nothing else is in flight, so the whole upload waits for the timeout.
 - 2026-10-23: workers are started with `Builder::spawn_scoped`; a thread the OS
   refuses is reported as an error so the multipart upload is still aborted,
   instead of panicking out of `Scope::spawn` and leaving it behind.
+- 2026-10-23: the source file is opened once and each part reads a range from
+  that handle under a lock. Opening the path in each worker could mix two
+  versions of the file into one object when a writer swaps the path atomically
+  between worker startups, and cloned handles would share a seek position.
 - 2026-10-23: four workers by default, 16 as the ceiling; a failing part is
   reported after the other workers stop at their next part boundary, so the
   caller never waits for parts queued behind a failure.

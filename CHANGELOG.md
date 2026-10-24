@@ -20,6 +20,9 @@ All notable changes to this project will be documented in this file.
   part ordering are unchanged.
 - Peak memory for a multipart upload is `concurrency * part_size` (4 x 8 MiB
   with the defaults).
+- Multipart parts are read from one open handle instead of reopening the path
+  in each worker, so a file replaced at the same path mid-upload can no longer
+  contribute bytes from two versions to a single object.
 
 ## v0.26.1 -- 2026-09-09
 
