@@ -32,7 +32,7 @@ fn test_large_multipart_upload() {
     );
     println!(
         "Expected parts: {} (at 8MB chunks)",
-        (size + 8 * 1024 * 1024 - 1) / (8 * 1024 * 1024)
+        size.div_ceil(8 * 1024 * 1024)
     );
 
     let unique_id = std::time::SystemTime::now()

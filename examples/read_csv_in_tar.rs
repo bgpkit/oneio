@@ -12,7 +12,7 @@ fn main() {
         let mut entry = entry.unwrap();
         let path = entry.path().unwrap().to_string_lossy().to_string();
         if path.ends_with("csv") {
-            println!("found file {}", &path);
+            println!("found file {path}");
             println!("reading content now... (sleep for 3 seconds)");
             sleep(Duration::from_secs(3));
             let mut content: String = String::default();

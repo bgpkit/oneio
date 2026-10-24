@@ -224,7 +224,7 @@ FZr4y1T605mmkIwGPQ==
 
 #[test]
 fn test_file_extension_plain() {
-    assert_eq!(oneio::get_reader("tests/test_data.txt").is_ok(), true);
+    assert!(oneio::get_reader("tests/test_data.txt").is_ok());
 }
 
 #[cfg(feature = "any_gz")]

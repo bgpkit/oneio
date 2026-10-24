@@ -1410,7 +1410,7 @@ mod tests {
         let (cs, tp) = calculate_chunk_size(hundred_gb, chunk_size);
         assert!(tp <= 10_000);
         assert!(cs >= 8 * 1024 * 1024);
-        assert_eq!(tp, ((hundred_gb + cs - 1) / cs) as usize);
+        assert_eq!(tp, hundred_gb.div_ceil(cs) as usize);
     }
 
     #[test]
