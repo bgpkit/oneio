@@ -33,9 +33,9 @@ nothing else is in flight, so the whole upload waits for the timeout.
 ## 3. Proposed Solution
 
 - Keep the blocking design. Concurrency comes from `std::thread::scope`.
-- N worker threads (default 4) share an `AtomicUsize` part counter; each worker
-  opens its own `File` handle and reads only its own byte range, so there is no
-  shared seek or buffer state.
+- N worker threads (default 4) share an `AtomicUsize` part counter and read
+  their part ranges from one open handle. Reads are serialized through that
+  handle's lock; the uploads that follow run in parallel.
 - Each worker signs its own part URL and uploads with the existing retry
   helper; the ETag is written into a pre-sized slot `Vec<Option<String>>` at the
   part index, so the completion list is ordered by construction.

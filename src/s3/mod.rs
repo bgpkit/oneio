@@ -636,10 +636,11 @@ fn upload_multipart(
             .map_err(|e| OneIoError::Network(Box::new(e)))?;
     let upload_id = init_response.upload_id().to_string();
 
-    // 2. Upload parts concurrently. Each worker owns its own file handle and
-    //    reads only the range it uploads, so there is no shared seek or buffer
-    //    state. One stalled part therefore no longer stops the whole upload:
-    //    the other workers keep filling the pipe.
+    // 2. Upload parts concurrently. Part ranges are read from the one open
+    //    source, serialized by its lock, and each part is then uploaded after
+    //    the read returns. One stalled part therefore no longer stops the whole
+    //    upload: the other workers keep filling the pipe with parts they have
+    //    already read.
     let concurrency = multipart_concurrency(s3_upload_tuning().0, total_parts);
     let state = PartUploadState::new();
     let slots: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; total_parts]);
@@ -673,9 +674,9 @@ fn upload_multipart(
                                 "PUT",
                             )?;
 
-                            // On retry this re-reads the same range from this
-                            // worker's own file handle, so workers never race
-                            // on a seek.
+                            // On retry this re-reads the same range from the
+                            // shared source; the read is taken under the source
+                            // lock, outside the network wait.
                             let response = ensure_s3_success(upload_part_with_retry(
                                 &url, body, &source, offset, part_len,
                             )?)?;

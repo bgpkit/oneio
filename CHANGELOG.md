@@ -13,9 +13,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- S3 multipart uploads now run parts in parallel, each worker reading its own
-  byte range from its own file handle. Previously parts were uploaded one at a
-  time, so a single TCP stream set the ceiling and one stalled part blocked
+- S3 multipart uploads now run parts in parallel, reading each part's byte
+  range from a single open handle before uploading it. Previously parts were
+  uploaded one at a time, so a single TCP stream set the ceiling and one stalled part blocked
   everything until the request timeout. Part retries, abort-on-failure and
   part ordering are unchanged.
 - Peak memory for a multipart upload is `concurrency * part_size` (4 x 8 MiB
