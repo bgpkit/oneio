@@ -193,10 +193,15 @@ Optional:
 - `AWS_SESSION_TOKEN` - Temporary session token
 - `ONEIO_S3_CHUNK_SIZE` - Multipart part size in bytes (default: 8MB)
 - `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
+- `ONEIO_S3_MAX_CONCURRENCY` - Multipart parts uploaded in parallel (default: 4, max: 16)
+- `ONEIO_S3_REQUEST_TIMEOUT_SECS` - Per-request timeout for upload requests (default: 300)
+- `ONEIO_S3_MAX_RETRIES` - Retry attempts after the initial request (default: 3)
+- `ONEIO_S3_RETRY_BACKOFF_MS` - Initial retry backoff in ms, doubles each attempt (default: 1000)
 
-R2 supports single PUT uploads up to 300 MiB. The default threshold of 5MB
-(the S3 minimum part size) uses single-PUT for small files and multipart
-for larger files where retry-per-part improves reliability.
+The default threshold of 5MB (the S3 minimum part size) uses single PUT for
+small files and multipart for larger ones, where parts are uploaded in
+parallel and each part retries independently. Peak memory for a multipart
+upload is `concurrency * part_size`.
 
 # TLS and Corporate Proxies
 

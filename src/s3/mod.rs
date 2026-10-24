@@ -14,12 +14,15 @@
 //! - `ONEIO_S3_MULTIPART_THRESHOLD` - File size threshold for multipart upload (default: 5MB)
 //! - `ONEIO_S3_MAX_RETRIES` - Retry attempts after the initial request for transient transport errors (default: 3)
 //! - `ONEIO_S3_RETRY_BACKOFF_MS` - Initial retry backoff in ms, doubles each attempt (default: 1000)
+//! - `ONEIO_S3_MAX_CONCURRENCY` - Multipart parts uploaded in parallel (default: 4, max: 16)
+//! - `ONEIO_S3_REQUEST_TIMEOUT_SECS` - Per-request timeout for upload requests (default: 300)
 //!
 //! # Upload Behavior
 //!
 //! Files smaller than the multipart threshold use a single PUT request.
 //! Larger files are uploaded via multipart with auto-calculated part sizing
-//! to stay within S3's 10,000 part limit.
+//! to stay within S3's 10,000 part limit, and with parts uploaded in parallel.
+//! Peak memory for a multipart upload is `concurrency * part_size`.
 
 pub mod config;
 
@@ -33,12 +36,18 @@ use reqwest::blocking::Response;
 use rusty_s3::S3Action;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Seek, SeekFrom};
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 type HmacSha256 = Hmac<Sha256>;
 
-const S3_UPLOAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+/// Multipart parts uploaded in parallel when the caller does not override it.
+const DEFAULT_MULTIPART_CONCURRENCY: usize = 4;
+/// Upper bound on multipart workers, so one upload cannot exhaust the caller.
+const MAX_MULTIPART_CONCURRENCY: usize = 16;
+/// Per-request timeout for S3 upload requests (single PUT, part, initiate, complete).
+const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 300;
 
 const COPY_SOURCE_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b':')
@@ -315,7 +324,7 @@ pub fn s3_upload(bucket: &str, key: &str, file_path: &str) -> Result<(), OneIoEr
     if size < config.multipart_threshold {
         upload_single(&config, key, file_path)
     } else {
-        upload_multipart(&config, key, file_path, size)
+        upload_multipart(&config, key, file_path)
     }
 }
 
@@ -329,7 +338,7 @@ fn upload_single(config: &config::S3Config, key: &str, file_path: &str) -> Resul
     ensure_s3_success(
         get_s3_client()
             .put(url)
-            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .timeout(upload_request_timeout())
             .body(file)
             .send()?,
     )?;
@@ -363,6 +372,106 @@ fn s3_retry_config() -> (u32, u64) {
             .unwrap_or(1000);
         (max_retries, retry_backoff_ms)
     })
+}
+
+/// Concurrency and request timeout for S3 uploads, read once from the
+/// environment so repeated uploads in one process behave identically.
+fn s3_upload_tuning() -> (usize, Duration) {
+    static S3_UPLOAD_CONFIG: OnceLock<(usize, Duration)> = OnceLock::new();
+    *S3_UPLOAD_CONFIG.get_or_init(|| {
+        let concurrency = std::env::var("ONEIO_S3_MAX_CONCURRENCY")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(DEFAULT_MULTIPART_CONCURRENCY);
+        let timeout_secs = std::env::var("ONEIO_S3_REQUEST_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT_SECS);
+        (concurrency, Duration::from_secs(timeout_secs))
+    })
+}
+
+fn upload_request_timeout() -> Duration {
+    s3_upload_tuning().1
+}
+
+/// Number of parts to keep in flight. Bounded by the configured value, the
+/// per-upload ceiling and the number of parts there are to send.
+fn multipart_concurrency(requested: usize, total_parts: usize) -> usize {
+    requested
+        .clamp(1, MAX_MULTIPART_CONCURRENCY)
+        .min(total_parts.max(1))
+}
+
+/// Turn per-part ETag slots into the ordered part list for
+/// CompleteMultipartUpload. A missing slot means a worker never succeeded.
+fn collect_part_etags(slots: &[Option<String>]) -> Result<Vec<String>, OneIoError> {
+    slots
+        .iter()
+        .enumerate()
+        .map(|(index, slot)| {
+            slot.clone().ok_or_else(|| {
+                OneIoError::NotSupported(format!("Missing ETag for multipart part {}", index + 1))
+            })
+        })
+        .collect()
+}
+
+/// Shared state of one multipart part pool: which part to take next, whether a
+/// worker has already failed, and which error to report.
+struct PartUploadState {
+    next_part: AtomicUsize,
+    stop: AtomicBool,
+    first_error: Mutex<Option<OneIoError>>,
+}
+
+impl PartUploadState {
+    fn new() -> Self {
+        Self {
+            next_part: AtomicUsize::new(0),
+            stop: AtomicBool::new(false),
+            first_error: Mutex::new(None),
+        }
+    }
+
+    /// Claim the next part, or `None` once every part is taken or the pool has
+    /// already failed.
+    fn claim(&self, total_parts: usize) -> Option<usize> {
+        if self.stop.load(Ordering::Relaxed) {
+            return None;
+        }
+        let index = self.next_part.fetch_add(1, Ordering::Relaxed);
+        (index < total_parts).then_some(index)
+    }
+
+    #[cfg(test)]
+    fn cancelled(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
+
+    /// Record a failure and stop the pool.
+    ///
+    /// Workers call this themselves: the coordinator joins them in creation
+    /// order, so signalling from the join loop would let a failure in a later
+    /// worker go unnoticed while the remaining parts are still uploaded.
+    fn fail(&self, error: OneIoError) {
+        let mut slot = self
+            .first_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if slot.is_none() {
+            *slot = Some(error);
+        }
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    /// The first error reported by any worker, if one was.
+    fn into_error(self) -> Option<OneIoError> {
+        self.first_error
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 /// Execute an S3 request with retry on transient transport errors.
@@ -409,48 +518,82 @@ fn is_retryable_error(err: &reqwest::Error) -> bool {
     false
 }
 
+/// Single open handle for the multipart source, read under a lock.
+///
+/// Reopening the path in each worker would let an atomic replacement of the
+/// file between two opens mix bytes from two versions into one object: the
+/// per-part length checks still pass when both versions have the same size.
+/// Handles cloned from one open would share a seek position instead, so reads
+/// go through this lock rather than a raw file per worker.
+struct PartSource {
+    file: Mutex<std::fs::File>,
+}
+
+impl PartSource {
+    fn open(path: &str) -> Result<Self, OneIoError> {
+        Ok(Self {
+            file: Mutex::new(std::fs::File::open(path)?),
+        })
+    }
+
+    /// Size of the open file, not of whatever the path resolves to now.
+    fn len(&self) -> Result<u64, OneIoError> {
+        let file = self
+            .file
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        Ok(file.metadata()?.len())
+    }
+
+    /// Read exactly `len` bytes at `offset` from the open file.
+    fn read_range(&self, offset: u64, len: u64) -> Result<Vec<u8>, OneIoError> {
+        let mut file = self
+            .file
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut buf = Vec::with_capacity(len as usize);
+        file.seek(SeekFrom::Start(offset))?;
+        file.by_ref().take(len).read_to_end(&mut buf)?;
+        if buf.len() as u64 != len {
+            return Err(OneIoError::Io(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!(
+                    "multipart part read was short: expected {len} bytes, got {}",
+                    buf.len()
+                ),
+            )));
+        }
+        Ok(buf)
+    }
+}
+
 /// Upload a single multipart part with retry, avoiding unnecessary clones.
 ///
 /// On the first attempt, `body` is moved into the request with zero copy.
 /// On retry (transient transport error), the part bytes are re-read from
-/// `file` at `offset` to reconstruct the request body. This avoids cloning
-/// the full chunk on every attempt — the happy path has no extra allocation.
+/// `source` at `offset` to reconstruct the request body.
 fn upload_part_with_retry(
     url: &reqwest::Url,
     body: Vec<u8>,
-    file: &mut std::fs::File,
+    source: &PartSource,
     offset: u64,
     part_len: u64,
 ) -> Result<Response, OneIoError> {
     let (max_retries, mut backoff_ms) = s3_retry_config();
 
     // First attempt: move the body, no clone.
-    // Retry attempts: re-read from file at the recorded offset.
+    // Retry attempts: re-read the same range from the open source.
     let mut body = Some(body);
 
     for _attempt in 0..=max_retries {
         let request_body = match body.take() {
             Some(b) => b,
-            None => {
-                let mut buf = Vec::with_capacity(part_len as usize);
-                file.seek(SeekFrom::Start(offset))?;
-                file.by_ref().take(part_len).read_to_end(&mut buf)?;
-                if buf.len() as u64 != part_len {
-                    return Err(OneIoError::Io(std::io::Error::new(
-                        std::io::ErrorKind::UnexpectedEof,
-                        format!(
-                            "S3 retry part read was short: expected {part_len} bytes, got {}",
-                            buf.len()
-                        ),
-                    )));
-                }
-                buf
-            }
+            None => source.read_range(offset, part_len)?,
         };
 
         match get_s3_client()
             .put(url.clone())
-            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .timeout(upload_request_timeout())
             .body(request_body)
             .send()
         {
@@ -469,8 +612,11 @@ fn upload_multipart(
     config: &config::S3Config,
     key: &str,
     file_path: &str,
-    size: u64,
 ) -> Result<(), OneIoError> {
+    // One open handle covers the part ranges, the total size and the retry
+    // reads, so every part comes from the same file version.
+    let source = PartSource::open(file_path)?;
+    let size = source.len()?;
     let (chunk_size, total_parts) = calculate_chunk_size(size, config.multipart_chunk_size);
 
     let bucket = config.rusty_bucket()?;
@@ -482,7 +628,7 @@ fn upload_multipart(
     let response = ensure_s3_success(send_with_retry(|| {
         get_s3_client()
             .post(url.clone())
-            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .timeout(upload_request_timeout())
             .send()
     })?)?;
     let init_response =
@@ -490,56 +636,99 @@ fn upload_multipart(
             .map_err(|e| OneIoError::Network(Box::new(e)))?;
     let upload_id = init_response.upload_id().to_string();
 
-    // 2. Upload parts with abort-on-failure guard
-    let mut parts: Vec<String> = Vec::with_capacity(total_parts);
-    let mut file = std::fs::File::open(file_path)?;
-    let mut chunk = Vec::with_capacity(chunk_size as usize);
+    // 2. Upload parts concurrently. Part ranges are read from the one open
+    //    source, serialized by its lock, and each part is then uploaded after
+    //    the read returns. One stalled part therefore no longer stops the whole
+    //    upload: the other workers keep filling the pipe with parts they have
+    //    already read.
+    let concurrency = multipart_concurrency(s3_upload_tuning().0, total_parts);
+    let state = PartUploadState::new();
+    let slots: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; total_parts]);
 
-    let upload_result = (|| -> Result<(), OneIoError> {
-        for part_number in 1..=total_parts {
-            chunk.clear();
-            let bytes_read = file.by_ref().take(chunk_size).read_to_end(&mut chunk)?;
-            if bytes_read == 0 {
-                break;
+    std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(concurrency);
+        for _ in 0..concurrency {
+            // `Scope::spawn` panics when the OS refuses a thread, which would
+            // unwind past the abort path below and leave the multipart upload
+            // behind. Report the failure through the pool state instead.
+            let spawned = std::thread::Builder::new()
+                .name("oneio-s3-part".to_string())
+                .spawn_scoped(scope, || {
+                    let outcome = (|| -> Result<(), OneIoError> {
+                        while let Some(index) = state.claim(total_parts) {
+                            let offset = index as u64 * chunk_size;
+                            let part_len = (size - offset).min(chunk_size);
+                            let body = source.read_range(offset, part_len)?;
+
+                            let action = bucket.upload_part(
+                                Some(&creds),
+                                key,
+                                (index + 1) as u16,
+                                &upload_id,
+                            );
+
+                            let url = repair_leading_slash_action_url(
+                                action.sign(config.ttl),
+                                config,
+                                key,
+                                "PUT",
+                            )?;
+
+                            // On retry this re-reads the same range from the
+                            // shared source; the read is taken under the source
+                            // lock, outside the network wait.
+                            let response = ensure_s3_success(upload_part_with_retry(
+                                &url, body, &source, offset, part_len,
+                            )?)?;
+                            let etag = extract_etag(response.headers()).ok_or_else(|| {
+                                OneIoError::NotSupported(
+                                    "Missing ETag in UploadPart response".into(),
+                                )
+                            })?;
+                            slots
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())[index] =
+                                Some(etag);
+                        }
+                        Ok(())
+                    })();
+                    if let Err(e) = outcome {
+                        state.fail(e);
+                    }
+                });
+
+            match spawned {
+                Ok(handle) => handles.push(handle),
+                Err(e) => {
+                    // Keep whatever workers already started; they stop at the
+                    // next part boundary because `fail` sets the stop flag.
+                    state.fail(OneIoError::Io(e));
+                    break;
+                }
             }
-
-            let action = bucket.upload_part(Some(&creds), key, part_number as u16, &upload_id);
-            let url = repair_leading_slash_action_url(action.sign(config.ttl), config, key, "PUT")?;
-            let part_data = std::mem::replace(&mut chunk, Vec::with_capacity(chunk_size as usize));
-            let part_len = part_data.len() as u64;
-            let part_offset = file
-                .stream_position()?
-                .checked_sub(part_len)
-                .ok_or_else(|| {
-                    OneIoError::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "multipart part offset exceeds file position",
-                    ))
-                })?;
-
-            // Upload this part with retry. On the first attempt, move the
-            // body to avoid cloning the full chunk. On retry (transient
-            // transport error), re-read the same bytes from the file.
-            let response = ensure_s3_success(upload_part_with_retry(
-                &url,
-                part_data,
-                &mut file,
-                part_offset,
-                part_len,
-            )?)?;
-
-            let etag = extract_etag(response.headers()).ok_or_else(|| {
-                OneIoError::NotSupported("Missing ETag in UploadPart response".into())
-            })?;
-            parts.push(etag);
         }
-        Ok(())
-    })();
 
-    if let Err(e) = upload_result {
+        // Workers stop themselves through `state.fail`; joining is only needed
+        // to surface a panic, which cannot report through that path.
+        for handle in handles {
+            if handle.join().is_err() {
+                state.fail(OneIoError::NotSupported(
+                    "multipart part worker panicked".to_string(),
+                ));
+            }
+        }
+    });
+
+    if let Some(e) = state.into_error() {
         abort_multipart_upload(&bucket, &creds, config, key, &upload_id);
         return Err(e);
     }
+
+    let parts = collect_part_etags(
+        &slots
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+    )?;
 
     // 3. Complete multipart upload
     let action = bucket.complete_multipart_upload(
@@ -553,7 +742,7 @@ fn upload_multipart(
     let response = match send_with_retry(|| {
         get_s3_client()
             .post(url.clone())
-            .timeout(S3_UPLOAD_REQUEST_TIMEOUT)
+            .timeout(upload_request_timeout())
             .header("content-type", "application/xml")
             .body(body.clone())
             .send()
@@ -1222,5 +1411,146 @@ mod tests {
         assert!(tp <= 10_000);
         assert!(cs >= 8 * 1024 * 1024);
         assert_eq!(tp, ((hundred_gb + cs - 1) / cs) as usize);
+    }
+
+    #[test]
+    fn test_multipart_concurrency_bounds() {
+        // Requested value is used when there is enough work.
+        assert_eq!(multipart_concurrency(4, 100), 4);
+        // Never more workers than parts.
+        assert_eq!(multipart_concurrency(4, 2), 2);
+        // At least one worker, even for a single-part upload.
+        assert_eq!(multipart_concurrency(4, 1), 1);
+        assert_eq!(multipart_concurrency(0, 10), 1);
+        // Never above the per-upload ceiling.
+        assert_eq!(
+            multipart_concurrency(1_000, 10_000),
+            MAX_MULTIPART_CONCURRENCY
+        );
+    }
+
+    #[test]
+    fn test_collect_part_etags_preserves_part_order() {
+        let slots = vec![
+            Some("etag-1".to_string()),
+            Some("etag-2".to_string()),
+            Some("etag-3".to_string()),
+        ];
+        assert_eq!(
+            collect_part_etags(&slots).map_err(|e| e.to_string()),
+            Ok(vec![
+                "etag-1".to_string(),
+                "etag-2".to_string(),
+                "etag-3".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_collect_part_etags_rejects_missing_part() {
+        let slots = vec![Some("etag-1".to_string()), None];
+        match collect_part_etags(&slots) {
+            Ok(parts) => panic!("expected a missing-part error, got {parts:?}"),
+            Err(crate::OneIoError::NotSupported(message)) => {
+                assert_eq!(message, "Missing ETag for multipart part 2");
+            }
+            Err(e) => panic!("unexpected error: {e}"),
+        }
+    }
+
+    fn temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("oneio-{}-{nanos}-{name}", std::process::id()))
+    }
+
+    #[test]
+    fn part_source_reads_exact_ranges() {
+        let path = temp_path("ranges.bin");
+        std::fs::write(&path, b"0123456789abcdef").unwrap();
+        let source = PartSource::open(path.to_str().unwrap()).unwrap();
+
+        assert_eq!(source.len().unwrap(), 16);
+        assert_eq!(source.read_range(0, 4).unwrap(), b"0123".to_vec());
+        assert_eq!(source.read_range(10, 6).unwrap(), b"abcdef".to_vec());
+        // A range past the end is an error, not a short body.
+        assert!(source.read_range(10, 7).is_err());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A rotating writer replaces the path atomically; the upload must keep
+    /// reading the file version it opened, not whichever version the path
+    /// resolves to now. Equal sizes make a mixed upload otherwise invisible.
+    #[cfg(unix)]
+    #[test]
+    fn part_source_keeps_the_opened_file_after_path_replacement() {
+        let path = temp_path("replace.bin");
+        let replacement = temp_path("replacement.bin");
+        std::fs::write(&path, b"AAAAAAAAAAAA").unwrap();
+        std::fs::write(&replacement, b"BBBBBBBBBBBB").unwrap();
+
+        let source = PartSource::open(path.to_str().unwrap()).unwrap();
+        std::fs::rename(&replacement, &path).unwrap();
+
+        assert_eq!(source.len().unwrap(), 12);
+        assert_eq!(source.read_range(0, 12).unwrap(), b"AAAAAAAAAAAA".to_vec());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn part_state_claims_each_part_once() {
+        let state = PartUploadState::new();
+        let claimed: Vec<usize> = std::iter::from_fn(|| state.claim(3)).collect();
+        assert_eq!(claimed, vec![0, 1, 2]);
+        assert_eq!(state.claim(3), None);
+    }
+
+    #[test]
+    fn part_state_keeps_first_failure_and_stops_claims() {
+        let state = PartUploadState::new();
+        assert_eq!(state.claim(10), Some(0));
+        state.fail(crate::OneIoError::NotSupported("part 2 failed".into()));
+        state.fail(crate::OneIoError::NotSupported("part 5 failed".into()));
+        assert!(state.cancelled());
+        assert_eq!(state.claim(10), None);
+        match state.into_error() {
+            Some(crate::OneIoError::NotSupported(message)) => assert_eq!(message, "part 2 failed"),
+            other => panic!("expected the first failure, got {other:?}"),
+        }
+    }
+
+    /// The coordinator joins workers in creation order, so a failing worker has
+    /// to publish cancellation itself. Otherwise a failure in a later worker
+    /// waits behind a slow earlier worker while the remaining parts keep
+    /// uploading.
+    #[test]
+    fn part_state_failure_is_visible_while_another_worker_runs() {
+        let state = PartUploadState::new();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+
+        std::thread::scope(|scope| {
+            let blocked = scope.spawn(move || {
+                let _ = release_rx.recv_timeout(std::time::Duration::from_secs(10));
+            });
+            let failing = scope.spawn(|| {
+                state.fail(crate::OneIoError::NotSupported("part 2 failed".into()));
+            });
+
+            let _ = failing.join();
+            let cancelled_while_blocked = state.cancelled();
+            let _ = release_tx.send(());
+            let _ = blocked.join();
+
+            assert!(
+                cancelled_while_blocked,
+                "a failing worker must set the stop flag before other workers finish"
+            );
+        });
+
+        assert!(state.into_error().is_some());
     }
 }
