@@ -85,6 +85,12 @@ nothing else is in flight, so the whole upload waits for the timeout.
   `S3Config` has public fields and adding one breaks struct literals.
 - 2026-10-23: no per-part logging in the library; oneio has no logging facade in
   library code today, so callers time the whole call instead.
+- 2026-10-23: workers report failure and cancellation themselves through shared
+  state, because the coordinator joins them in creation order and would
+  otherwise keep uploading queued parts behind a failure.
+- 2026-10-23: workers are started with `Builder::spawn_scoped`; a thread the OS
+  refuses is reported as an error so the multipart upload is still aborted,
+  instead of panicking out of `Scope::spawn` and leaving it behind.
 - 2026-10-23: four workers by default, 16 as the ceiling; a failing part is
   reported after the other workers stop at their next part boundary, so the
   caller never waits for parts queued behind a failure.

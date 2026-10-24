@@ -610,55 +610,78 @@ fn upload_multipart(
     std::thread::scope(|scope| {
         let mut handles = Vec::with_capacity(concurrency);
         for _ in 0..concurrency {
-            handles.push(scope.spawn(|| {
-                let outcome = (|| -> Result<(), OneIoError> {
-                    let mut file = std::fs::File::open(file_path)?;
-                    while let Some(index) = state.claim(total_parts) {
-                        let offset = index as u64 * chunk_size;
-                        let part_len = (size - offset).min(chunk_size);
+            // `Scope::spawn` panics when the OS refuses a thread, which would
+            // unwind past the abort path below and leave the multipart upload
+            // behind. Report the failure through the pool state instead.
+            let spawned = std::thread::Builder::new()
+                .name("oneio-s3-part".to_string())
+                .spawn_scoped(scope, || {
+                    let outcome = (|| -> Result<(), OneIoError> {
+                        let mut file = std::fs::File::open(file_path)?;
+                        while let Some(index) = state.claim(total_parts) {
+                            let offset = index as u64 * chunk_size;
+                            let part_len = (size - offset).min(chunk_size);
 
-                        let mut body = Vec::with_capacity(part_len as usize);
-                        file.seek(SeekFrom::Start(offset))?;
-                        file.by_ref().take(part_len).read_to_end(&mut body)?;
-                        if body.len() as u64 != part_len {
-                            return Err(OneIoError::Io(std::io::Error::new(
-                                std::io::ErrorKind::UnexpectedEof,
-                                format!(
-                                    "multipart part read was short: expected {part_len} bytes, \
-                                     got {}",
-                                    body.len()
-                                ),
-                            )));
+                            let mut body = Vec::with_capacity(part_len as usize);
+                            file.seek(SeekFrom::Start(offset))?;
+                            file.by_ref().take(part_len).read_to_end(&mut body)?;
+                            if body.len() as u64 != part_len {
+                                return Err(OneIoError::Io(std::io::Error::new(
+                                    std::io::ErrorKind::UnexpectedEof,
+                                    format!(
+                                        "multipart part read was short: expected {part_len} \
+                                         bytes, got {}",
+                                        body.len()
+                                    ),
+                                )));
+                            }
+
+                            let action = bucket.upload_part(
+                                Some(&creds),
+                                key,
+                                (index + 1) as u16,
+                                &upload_id,
+                            );
+
+                            let url = repair_leading_slash_action_url(
+                                action.sign(config.ttl),
+                                config,
+                                key,
+                                "PUT",
+                            )?;
+
+                            // On retry this re-reads the same range from this
+                            // worker's own file handle, so workers never race
+                            // on a seek.
+                            let response = ensure_s3_success(upload_part_with_retry(
+                                &url, body, &mut file, offset, part_len,
+                            )?)?;
+                            let etag = extract_etag(response.headers()).ok_or_else(|| {
+                                OneIoError::NotSupported(
+                                    "Missing ETag in UploadPart response".into(),
+                                )
+                            })?;
+                            slots
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())[index] =
+                                Some(etag);
                         }
-
-                        let action =
-                            bucket.upload_part(Some(&creds), key, (index + 1) as u16, &upload_id);
-                        let url = repair_leading_slash_action_url(
-                            action.sign(config.ttl),
-                            config,
-                            key,
-                            "PUT",
-                        )?;
-
-                        // On retry this re-reads the same range from this
-                        // worker's own file handle, so workers never race on a
-                        // seek.
-                        let response = ensure_s3_success(upload_part_with_retry(
-                            &url, body, &mut file, offset, part_len,
-                        )?)?;
-                        let etag = extract_etag(response.headers()).ok_or_else(|| {
-                            OneIoError::NotSupported("Missing ETag in UploadPart response".into())
-                        })?;
-                        slots
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner())[index] = Some(etag);
+                        Ok(())
+                    })();
+                    if let Err(e) = outcome {
+                        state.fail(e);
                     }
-                    Ok(())
-                })();
-                if let Err(e) = outcome {
-                    state.fail(e);
+                });
+
+            match spawned {
+                Ok(handle) => handles.push(handle),
+                Err(e) => {
+                    // Keep whatever workers already started; they stop at the
+                    // next part boundary because `fail` sets the stop flag.
+                    state.fail(OneIoError::Io(e));
+                    break;
                 }
-            }));
+            }
         }
 
         // Workers stop themselves through `state.fail`; joining is only needed
