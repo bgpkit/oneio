@@ -61,13 +61,13 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Clippy with all features
-        run: cargo clippy --all-features -- -D warnings
+        run: cargo clippy --all-features --all-targets -- -D warnings
 
       - name: Clippy with no features
-        run: cargo clippy --no-default-features -- -D warnings
+        run: cargo clippy --no-default-features --all-targets -- -D warnings
 
       - name: Clippy with default features
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
   build:
     name: Build
