@@ -61,6 +61,22 @@ fn classify_range_not_satisfiable(offset: u64, content_length: Option<u64>) -> R
     }
 }
 
+/// Builds the error reported when a body ends before the length it declared.
+///
+/// A clean `FIN` at an offset below `Content-Length` describes a truncated
+/// transfer, not end of stream. Reporting `Ok(0)` there hands the caller a short
+/// stream that looks complete, which is how a partial MRT file or dump becomes
+/// indistinguishable from a full one.
+fn premature_eof(offset: u64, declared: u64) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!(
+            "HTTP response body ended at byte {offset} of {declared} declared bytes; \
+             refusing to return truncated data"
+        ),
+    )
+}
+
 /// Result of comparing the `ETag` / `Last-Modified` validators of the original
 /// and resumed responses to decide whether they describe the same resource.
 enum ValidatorCheck {
@@ -319,7 +335,33 @@ impl Read for ResumableHttpReader {
 
         loop {
             match self.response.read(buf) {
-                Ok(0) => return Ok(0),
+                Ok(0) => {
+                    // A clean end of connection is only end of stream when the
+                    // body delivered what it declared. Short of that, the rest
+                    // may still be reachable with a Range request; returning
+                    // `Ok(0)` would report a truncated stream as complete.
+                    let Some(declared) = self.content_length else {
+                        return Ok(0);
+                    };
+                    if self.offset >= declared {
+                        return Ok(0);
+                    }
+                    if stalled_retries >= MAX_RETRIES {
+                        return Err(premature_eof(self.offset, declared));
+                    }
+                    stalled_retries += 1;
+
+                    match self.resume()? {
+                        // Read again from the freshly reconnected response.
+                        Resume::Resumed => continue,
+                        // Already complete according to the server's 416.
+                        Resume::Eof => return Ok(0),
+                        // Can't resume — refuse to hand back a short stream.
+                        Resume::Unsupported | Resume::Failed => {
+                            return Err(premature_eof(self.offset, declared))
+                        }
+                    }
+                }
                 Ok(n) => {
                     self.offset += n as u64;
                     return Ok(n);
@@ -540,6 +582,98 @@ mod tests {
 
         let mut buf = String::new();
         assert!(reader.read_to_string(&mut buf).is_err());
+        handle.join().unwrap();
+    }
+
+    // A resumed 206 message can be complete on the wire while still stopping
+    // short of the total the original response declared (a server that caps
+    // range responses). The reader must ask again instead of treating the
+    // message boundary as end of stream (#85).
+    #[test]
+    fn short_resume_message_resumes_again() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let url = format!("http://127.0.0.1:{}/data.txt", port);
+
+        let handle = thread::spawn(move || {
+            let (mut stream1, _) = listener.accept().unwrap();
+            read_request(&mut stream1);
+            let response_part1 = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n12345";
+            stream1.write_all(response_part1.as_bytes()).unwrap();
+            drop(stream1);
+
+            // First resume: a complete 3-byte message covering 5-7 of 10.
+            let (mut stream2, _) = listener.accept().unwrap();
+            let req = read_request(&mut stream2);
+            assert!(req.to_ascii_lowercase().contains("range: bytes=5-"));
+            let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\n\
+                 Content-Range: bytes 5-7/10\r\n\r\n678";
+            stream2.write_all(response_part2.as_bytes()).unwrap();
+            stream2.flush().unwrap();
+            drop(stream2);
+
+            // Second resume: the last two bytes.
+            let (mut stream3, _) = listener.accept().unwrap();
+            let req = read_request(&mut stream3);
+            assert!(req.to_ascii_lowercase().contains("range: bytes=8-"));
+            let response_part3 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 2\r\n\
+                 Content-Range: bytes 8-9/10\r\n\r\n90";
+            stream3.write_all(response_part3.as_bytes()).unwrap();
+            stream3.flush().unwrap();
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let resp = client.get(&url).send().unwrap();
+        let mut reader = ResumableHttpReader::new(client, url, resp);
+
+        let mut buf = String::new();
+        reader.read_to_string(&mut buf).unwrap();
+
+        assert_eq!(buf.as_str(), "1234567890");
+        handle.join().unwrap();
+    }
+
+    // The same short resumed message, but the server will not serve the rest.
+    // Returning the 8 bytes as a complete stream is the silent truncation this
+    // reader exists to prevent, so the read must fail and name the shortfall.
+    #[test]
+    fn short_resume_message_without_more_ranges_is_err() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let url = format!("http://127.0.0.1:{}/data.txt", port);
+
+        let handle = thread::spawn(move || {
+            let (mut stream1, _) = listener.accept().unwrap();
+            read_request(&mut stream1);
+
+            let response_part1 = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n12345";
+            stream1.write_all(response_part1.as_bytes()).unwrap();
+            drop(stream1);
+
+            let (mut stream2, _) = listener.accept().unwrap();
+            read_request(&mut stream2);
+            let response_part2 = "HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\n\
+                 Content-Range: bytes 5-7/10\r\n\r\n678";
+            stream2.write_all(response_part2.as_bytes()).unwrap();
+            stream2.flush().unwrap();
+            drop(stream2);
+
+            // Ignores the Range header and offers the whole body again.
+            let (mut stream3, _) = listener.accept().unwrap();
+            read_request(&mut stream3);
+            let response_part3 = "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n1234567890";
+            stream3.write_all(response_part3.as_bytes()).unwrap();
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let resp = client.get(&url).send().unwrap();
+        let mut reader = ResumableHttpReader::new(client, url, resp);
+
+        let mut buf = String::new();
+        let err = reader.read_to_string(&mut buf).unwrap_err();
+
+        assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof);
+        assert!(err.to_string().contains("byte 8 of 10"), "{err}");
         handle.join().unwrap();
     }
 

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.27.1 -- 2026-11-25
+
+### Fixed
+
+- A resumable HTTP body that ends before the length its response declared no
+  longer reports a clean end of stream. The reader now asks for the remaining
+  range from the offset it reached, and fails with `UnexpectedEof` naming the
+  shortfall when the server cannot serve it, instead of handing the caller a
+  short body that looks complete. A `206` message that covers only part of the
+  declared total, as a server that caps range responses produces, is handled the
+  same way: the reader requests the next range instead of stopping at the
+  message boundary. ([#85](https://github.com/bgpkit/oneio/issues/85))
+
 ## v0.27.0 -- 2026-10-24
 
 ### Added
