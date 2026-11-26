@@ -12,6 +12,16 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Lines, Read, Write};
 use std::path::Path;
 
+/// Read buffer size for local files opened by the client's raw reader.
+///
+/// A bare `File` sends every `read` to the kernel. Consumers that read one
+/// header and one body per record, as the MRT parsers do, issue two small reads
+/// per record: a 4 GB RIB dump became 2.87M `read` calls and 2.3s of system time
+/// for bgpkit-parser. Served from this buffer the same file takes 15.8K reads and
+/// 0.7s. 8 KiB already removes most of the cost; 256 KiB keeps the syscall count
+/// low when many readers run at once and costs one allocation per open reader.
+const LOCAL_READ_BUFFER_BYTES: usize = 256 * 1024;
+
 /// Private helper: lossy UTF-8 line iterator over any `BufRead`.
 ///
 /// Invalid UTF-8 sequences are replaced with `U+FFFD`. Line splitting matches
@@ -97,7 +107,10 @@ impl OneIo {
                 }
                 _ => return Err(OneIoError::NotSupported(path.to_string())),
             },
-            None => Box::new(File::open(path)?),
+            None => Box::new(BufReader::with_capacity(
+                LOCAL_READ_BUFFER_BYTES,
+                File::open(path)?,
+            )),
         };
         Ok(raw_reader)
     }
