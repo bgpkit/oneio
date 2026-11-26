@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.28.0 -- 2026-11-26
+
+### Changed
+
+- Local files are read through a buffered reader instead of a bare `File`. A
+  consumer that reads in small pieces, such as an MRT parser reading one header
+  and one body per record, previously issued two syscalls per record: a 4 GB RIB
+  dump arrived as 2.87M `read` calls and 2.3s of system time, which the buffered
+  reader cuts to 15.8K calls and 0.7s. `Read::read` may return fewer bytes than
+  requested, which every caller already has to handle.
+
 ## v0.27.1 -- 2026-11-25
 
 ### Fixed
