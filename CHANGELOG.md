@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.28.1 -- 2026-11-28
+
+### Fixed
+
+- `OneIoError::Network` now exposes the error it wraps as its `source`. A consumer that prints an
+  error chain, such as anyhow's `{:#}`, saw only reqwest's "error sending request for url (...)"
+  and never the cause, so a connection reset and a timeout were indistinguishable in a log line or
+  in a database column. The wrapped error was already stored; only the `#[source]` marker that
+  makes `Error::source` return it was missing.
+
 ## v0.28.0 -- 2026-11-26
 
 ### Changed
